@@ -53,6 +53,8 @@ export default function UserInputSelectOptions( { slug, options, max } ) {
 		if ( ! checked ) {
 			newValues.delete( value );
 		}
+		global.console.log( 'click' );
+		global.console.log( newValues );
 
 		setUserInputSetting( slug, Array.from( newValues ).slice( 0, max ) );
 	}, dependencies );
@@ -62,6 +64,8 @@ export default function UserInputSelectOptions( { slug, options, max } ) {
 			target.value,
 			...values.filter( ( value ) => !! options[ value ] ),
 		];
+		global.console.log( 'other' );
+		global.console.log( newValues );
 
 		setOther( target.value );
 		setUserInputSetting( slug, newValues.slice( 0, max ) );
@@ -87,6 +91,9 @@ export default function UserInputSelectOptions( { slug, options, max } ) {
 			props.name = slug;
 		}
 
+		global.console.log( 'list items' );
+		global.console.log( props );
+
 		return (
 			<div key={ optionSlug } className="googlesitekit-user-input__select-option">
 				<ListComponent { ...props }>
@@ -95,6 +102,7 @@ export default function UserInputSelectOptions( { slug, options, max } ) {
 			</div>
 		);
 	} );
+	global.console.log( other );
 
 	return (
 		<Cell lgStart={ 6 } lgSize={ 6 } mdSize={ 8 } smSize={ 4 }>
