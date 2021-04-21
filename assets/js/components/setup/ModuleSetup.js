@@ -24,7 +24,7 @@ import PropTypes from 'prop-types';
 /**
  * WordPress dependencies
  */
-import { Fragment, useCallback } from '@wordpress/element';
+import { Fragment, useCallback, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 /**
@@ -44,6 +44,8 @@ import { useFeature } from '../../hooks/useFeature';
 const { useSelect, useDispatch } = Data;
 
 export default function ModuleSetup( { moduleSlug } ) {
+	const [ cancelButtonText, setCancelButtonText ] = useState( null );
+
 	const helpVisibilityEnabled = useFeature( 'helpVisibility' );
 
 	const { navigateTo } = useDispatch( CORE_LOCATION );
@@ -73,6 +75,10 @@ export default function ModuleSetup( { moduleSlug } ) {
 		}
 
 		navigateTo( redirectURL );
+	}, [ moduleSlug ] );
+
+	const failSetup = useCallback( ( buttonText ) => {
+		setCancelButtonText( buttonText );
 	}, [ moduleSlug ] );
 
 	if ( ! module?.SetupComponent ) {
@@ -117,6 +123,8 @@ export default function ModuleSetup( { moduleSlug } ) {
 											<SetupComponent
 												module={ module }
 												finishSetup={ finishSetup }
+												// another similar callback here
+												failSetup={ failSetup }
 											/>
 										</div>
 									</div>
@@ -133,7 +141,10 @@ export default function ModuleSetup( { moduleSlug } ) {
 												<Link
 													id={ `setup-${ module.slug }-cancel` }
 													href={ settingsPageURL }
-												>{ __( 'Cancel', 'google-site-kit' ) }</Link>
+												>
+													{ /* default fall back for button text */ }
+													{ cancelButtonText || __( 'Cancel', 'google-site-kit' ) }
+												</Link>
 											</div>
 											{ ! helpVisibilityEnabled && (
 												<div className="
