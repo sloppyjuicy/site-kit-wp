@@ -24,48 +24,15 @@ import { CORE_USER } from '../../../../googlesitekit/datastore/user/constants';
 import { accountsPropertiesProfiles } from '../../datastore/__fixtures__';
 import { STORE_NAME } from '../../datastore/constants';
 import { provideModules, provideSiteInfo } from '../../../../../../tests/js/utils';
-import { getAnalyticsMockResponse } from '../../util/data-mock';
+import { provideAnalyticsMockReport } from '../../util/data-mock';
 import WidgetAreaRenderer from '../../../../googlesitekit/widgets/components/WidgetAreaRenderer';
 import WithRegistrySetup from '../../../../../../tests/js/WithRegistrySetup';
-import DashboardUniqueVisitorsWidget from './DashboardUniqueVisitorsWidget';
+import DashboardUniqueVisitorsWidget, { selectSparklineArgs, selectReportArgs } from './DashboardUniqueVisitorsWidget';
 
 const areaName = 'moduleAnalyticsMain';
 const widgetSlug = 'analyticsUniqueVisitors';
 const currentEntityURL = 'https://www.example.com/example-page/';
-const options = {
-	startDate: '2020-08-11',
-	endDate: '2020-09-07',
-	dimensionFilters: { 'ga:channelGrouping': 'Organic Search' },
-	dimensions: [ 'ga:date', 'ga:channelGrouping' ],
-	metrics: [
-		{
-			expression: 'ga:users',
-			alias: 'Users',
-		},
-	],
-};
-const optionsEntityURL = {
-	...options,
-	url: currentEntityURL,
-};
-const optionsCompare = {
-	compareStartDate: '2020-07-14',
-	compareEndDate: '2020-08-10',
-	startDate: '2020-08-11',
-	endDate: '2020-09-07',
-	dimensionFilters: { 'ga:channelGrouping': 'Organic Search' },
-	dimensions: [ 'ga:channelGrouping' ],
-	metrics: [
-		{
-			expression: 'ga:users',
-			alias: 'Total Users',
-		},
-	],
-};
-const optionsCompareEntityURL = {
-	...optionsCompare,
-	url: currentEntityURL,
-};
+
 const WidgetAreaTemplate = ( args ) => {
 	return (
 		<WithRegistrySetup func={ args?.setupRegistry }>
@@ -77,42 +44,44 @@ const WidgetAreaTemplate = ( args ) => {
 export const Loaded = WidgetAreaTemplate.bind();
 Loaded.storyName = 'Loaded';
 Loaded.args = {
-	setupRegistry: ( { dispatch } ) => {
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsCompare ), { options: optionsCompare } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( options ), { options } );
+	setupRegistry: ( registry ) => {
+		provideAnalyticsMockReport( registry, selectReportArgs( registry.select ) );
+		provideAnalyticsMockReport( registry, selectSparklineArgs( registry.select ) );
 	},
 };
 
 export const Loading = WidgetAreaTemplate.bind();
 Loading.storyName = 'Loading';
 Loading.args = {
-	setupRegistry: ( { dispatch } ) => {
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsCompare ), { options: optionsCompare } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( options ), { options } );
-		dispatch( STORE_NAME ).startResolution( 'getReport', [ options ] );
-		dispatch( STORE_NAME ).startResolution( 'getReport', [ optionsCompare ] );
+	setupRegistry: ( registry ) => {
+		provideAnalyticsMockReport( registry, selectReportArgs( registry.select ) );
+		provideAnalyticsMockReport( registry, selectSparklineArgs( registry.select ) );
+		registry.dispatch( STORE_NAME ).startResolution( 'getReport', [ selectReportArgs( registry.select ) ] );
+		registry.dispatch( STORE_NAME ).startResolution( 'getReport', [ selectSparklineArgs( registry.select ) ] );
 	},
 };
 
 export const DataUnavailable = WidgetAreaTemplate.bind();
 DataUnavailable.storyName = 'Data Unavailable';
 DataUnavailable.args = {
-	setupRegistry: ( { dispatch } ) => {
-		dispatch( STORE_NAME ).receiveGetReport( [], { options } );
+	setupRegistry: ( registry ) => {
+		const options = selectReportArgs( registry.select );
+		registry.dispatch( STORE_NAME ).receiveGetReport( [], { options } );
 	},
 };
 
 export const Error = WidgetAreaTemplate.bind();
 Error.storyName = 'Error';
 Error.args = {
-	setupRegistry: ( { dispatch } ) => {
+	setupRegistry: ( registry ) => {
 		const error = {
-			code: 'missing_required_param',
-			message: 'Request parameter is empty: metrics.',
+			code: 'test_error',
+			message: 'Error message.',
 			data: {},
 		};
-		dispatch( STORE_NAME ).receiveError( error, 'getReport', [ options ] );
-		dispatch( STORE_NAME ).finishResolution( 'getReport', [ options ] );
+		const options = selectReportArgs( registry.select );
+		registry.dispatch( STORE_NAME ).receiveError( error, 'getReport', [ options ] );
+		registry.dispatch( STORE_NAME ).finishResolution( 'getReport', [ options ] );
 	},
 };
 
@@ -120,11 +89,9 @@ export const LoadedEntityURL = WidgetAreaTemplate.bind();
 LoadedEntityURL.storyName = 'Loaded with entity URL set';
 LoadedEntityURL.args = {
 	setupRegistry: ( registry ) => {
-		const { dispatch } = registry;
-
 		provideSiteInfo( registry, { currentEntityURL } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsCompareEntityURL ), { options: optionsCompareEntityURL } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsEntityURL ), { options: optionsEntityURL } );
+		provideAnalyticsMockReport( registry, selectReportArgs( registry.select ) );
+		provideAnalyticsMockReport( registry, selectSparklineArgs( registry.select ) );
 	},
 };
 
@@ -132,13 +99,11 @@ export const LoadingEntityURL = WidgetAreaTemplate.bind();
 LoadingEntityURL.storyName = 'Loading with entity URL set';
 LoadingEntityURL.args = {
 	setupRegistry: ( registry ) => {
-		const { dispatch } = registry;
-
 		provideSiteInfo( registry, { currentEntityURL } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsCompareEntityURL ), { options: optionsCompareEntityURL } );
-		dispatch( STORE_NAME ).receiveGetReport( getAnalyticsMockResponse( optionsEntityURL ), { options: optionsEntityURL } );
-		dispatch( STORE_NAME ).startResolution( 'getReport', [ optionsEntityURL ] );
-		dispatch( STORE_NAME ).startResolution( 'getReport', [ optionsCompareEntityURL ] );
+		provideAnalyticsMockReport( registry, selectReportArgs( registry.select ) );
+		provideAnalyticsMockReport( registry, selectSparklineArgs( registry.select ) );
+		registry.dispatch( STORE_NAME ).startResolution( 'getReport', [ selectReportArgs( registry.select ) ] );
+		registry.dispatch( STORE_NAME ).startResolution( 'getReport', [ selectSparklineArgs( registry.select ) ] );
 	},
 };
 
@@ -146,10 +111,8 @@ export const DataUnavailableEntityURL = WidgetAreaTemplate.bind();
 DataUnavailableEntityURL.storyName = 'Data Unavailable with entity URL set';
 DataUnavailableEntityURL.args = {
 	setupRegistry: ( registry ) => {
-		const { dispatch } = registry;
-
-		provideSiteInfo( registry, { currentEntityURL } );
-		dispatch( STORE_NAME ).receiveGetReport( [], { options: optionsEntityURL } );
+		const options = selectReportArgs( registry.select );
+		registry.dispatch( STORE_NAME ).receiveGetReport( [], { options } );
 	},
 };
 
@@ -157,16 +120,16 @@ export const ErrorEntityURL = WidgetAreaTemplate.bind();
 ErrorEntityURL.storyName = 'Error with entity URL set';
 ErrorEntityURL.args = {
 	setupRegistry: ( registry ) => {
-		const { dispatch } = registry;
 		const error = {
-			code: 'missing_required_param',
-			message: 'Request parameter is empty: metrics.',
+			code: 'test_error',
+			message: 'Error with entity URL set.',
 			data: {},
 		};
 
 		provideSiteInfo( registry, { currentEntityURL } );
-		dispatch( STORE_NAME ).receiveError( error, 'getReport', [ optionsEntityURL ] );
-		dispatch( STORE_NAME ).finishResolution( 'getReport', [ optionsEntityURL ] );
+		const options = selectReportArgs( registry.select );
+		registry.dispatch( STORE_NAME ).receiveError( error, 'getReport', [ options ] );
+		registry.dispatch( STORE_NAME ).finishResolution( 'getReport', [ options ] );
 	},
 };
 
@@ -175,8 +138,6 @@ export default {
 	decorators: [
 		( Story ) => {
 			const setupRegistry = ( registry ) => {
-				const { dispatch } = registry;
-
 				const [ property ] = accountsPropertiesProfiles.properties;
 				registry.dispatch( STORE_NAME ).receiveGetSettings( {
 					// eslint-disable-next-line sitekit/acronym-case
@@ -187,16 +148,16 @@ export default {
 					profileID: property.defaultProfileId,
 				} );
 
-				dispatch( CORE_WIDGETS ).registerWidgetArea( areaName, {
+				registry.dispatch( CORE_WIDGETS ).registerWidgetArea( areaName, {
 					title: 'Overview',
 					style: WIDGET_AREA_STYLES.BOXES,
 				} );
-				dispatch( CORE_WIDGETS ).registerWidget( widgetSlug, {
+				registry.dispatch( CORE_WIDGETS ).registerWidget( widgetSlug, {
 					Component: DashboardUniqueVisitorsWidget,
 					width: WIDGET_WIDTHS.FULL,
 				} );
-				dispatch( CORE_WIDGETS ).assignWidget( widgetSlug, areaName );
-				dispatch( CORE_USER ).setReferenceDate( '2020-09-08' );
+				registry.dispatch( CORE_WIDGETS ).assignWidget( widgetSlug, areaName );
+				registry.dispatch( CORE_USER ).setReferenceDate( '2020-09-08' );
 
 				provideModules( registry, [ {
 					active: true,
