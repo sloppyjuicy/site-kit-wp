@@ -19,45 +19,37 @@
 /**
  * WordPress dependencies
  */
-import { useEffect } from '@wordpress/element';
+import { useEffect, useRef } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { MODULES_TAGMANAGER } from '../datastore/constants';
-const { useSelect, useDispatch } = Data;
 
 export default function useExistingTagEffect() {
-	const hasExistingTag = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).hasExistingTag()
-	);
 	const existingTag = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getExistingTag()
 	);
-	const existingTagPermission = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).getTagPermission( existingTag )
+	const containerID = useSelect( ( select ) =>
+		select( MODULES_TAGMANAGER ).getPrimaryContainerID()
 	);
-	const hasExistingTagPermission = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).hasExistingTagPermission()
-	);
-	// Set the accountID and containerID if there is an existing tag.
-	const { selectAccount, selectContainerByID } = useDispatch(
-		MODULES_TAGMANAGER
-	);
+
+	const skipEffect = useRef( true );
+
+	const { setUseSnippet } = useDispatch( MODULES_TAGMANAGER );
+
 	useEffect( () => {
-		( async () => {
-			if ( hasExistingTag && hasExistingTagPermission ) {
-				await selectAccount( existingTagPermission.accountID );
-				await selectContainerByID( existingTag );
+		if ( existingTag && containerID !== undefined ) {
+			if ( containerID === '' || skipEffect.current ) {
+				skipEffect.current = false;
+				return;
 			}
-		} )();
-	}, [
-		hasExistingTag,
-		existingTag,
-		hasExistingTagPermission,
-		existingTagPermission,
-		selectAccount,
-		selectContainerByID,
-	] );
+			if ( existingTag === containerID ) {
+				setUseSnippet( false );
+			} else {
+				setUseSnippet( true );
+			}
+		}
+	}, [ containerID, existingTag, setUseSnippet ] );
 }

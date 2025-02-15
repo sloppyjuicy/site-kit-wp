@@ -20,10 +20,7 @@
  *
  * Internal dependencies
  */
-import {
-	createTestRegistry,
-	unsubscribeFromAll,
-} from '../../../../../tests/js/utils';
+import { createTestRegistry } from '../../../../../tests/js/utils';
 import { MODULES_PAGESPEED_INSIGHTS } from './constants';
 import { CORE_USER } from '../../../googlesitekit/datastore/user/constants';
 
@@ -34,7 +31,7 @@ describe( 'module/pagespeed-insights service store', () => {
 		name: 'admin',
 		picture: 'https://path/to/image',
 	};
-	const baseURI = 'https://developers.google.com/speed/pagespeed/insights';
+	const baseURI = 'https://pagespeed.web.dev';
 
 	let registry;
 
@@ -43,13 +40,9 @@ describe( 'module/pagespeed-insights service store', () => {
 		registry.dispatch( CORE_USER ).receiveUserInfo( userData );
 	} );
 
-	afterAll( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	describe( 'selectors', () => {
 		describe( 'getServiceURL', () => {
-			it( 'retrieves the correct URL with no arguments', async () => {
+			it( 'retrieves the correct URL with no arguments', () => {
 				const serviceURL = registry
 					.select( MODULES_PAGESPEED_INSIGHTS )
 					.getServiceURL();
@@ -68,7 +61,7 @@ describe( 'module/pagespeed-insights service store', () => {
 				expect( serviceURLWithLeadingSlash ).toEqual( expectedURL );
 			} );
 
-			it( 'adds query args', async () => {
+			it( 'adds query args', () => {
 				const path = '/test/path/to/deeplink';
 				const query = {
 					param1: '1',

@@ -24,11 +24,15 @@ import invariant from 'invariant';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-const { createRegistrySelector, createRegistryControl } = Data;
+import {
+	createRegistrySelector,
+	createRegistryControl,
+} from 'googlesitekit-data';
 import { CORE_MODULES } from './constants';
+import { createValidatedAction } from '../../data/utils';
 
 const SUBMIT_MODULE_CHANGES = 'SUBMIT_MODULE_CHANGES';
+const ROLLBACK_MODULE_CHANGES = 'ROLLBACK_MODULE_CHANGES';
 
 export const actions = {
 	/**
@@ -39,45 +43,113 @@ export const actions = {
 	 * @param {string} slug Slug for module store.
 	 * @return {Object} Module's submitChanges response object if it exists, otherwise object with `error` property if it doesn't.
 	 */
-	submitChanges( slug ) {
-		invariant( slug, 'slug is required.' );
-
-		return ( function* () {
+	submitChanges: createValidatedAction(
+		( slug ) => {
+			invariant( slug, 'slug is required.' );
+		},
+		function* ( slug ) {
 			return yield {
-				payload: { slug },
 				type: SUBMIT_MODULE_CHANGES,
+				payload: { slug },
 			};
-		} )();
-	},
-};
-
-export const controls = {
-	[ SUBMIT_MODULE_CHANGES ]: createRegistryControl(
-		( registry ) => ( { payload } ) => {
-			const { slug } = payload;
-			const storeName = registry
-				.select( CORE_MODULES )
-				.getModuleStoreName( slug );
-
-			if ( ! storeName ) {
-				return {
-					error: `The module '${ slug }' does not have a store.`,
-				};
-			}
-
-			const { submitChanges } = registry.dispatch( storeName );
-			if ( ! submitChanges ) {
-				return {
-					error: `The module '${ slug }' does not have a submitChanges() action.`,
-				};
-			}
-
-			return submitChanges( slug );
+		}
+	),
+	/**
+	 * Rolls back all changes for a module.
+	 *
+	 * @since 1.45.0
+	 *
+	 * @param {string} slug Slug for module store.
+	 * @return {Object} Module's rollbackChanges results.
+	 */
+	rollbackChanges: createValidatedAction(
+		( slug ) => {
+			invariant( slug, 'slug is required.' );
+		},
+		function* ( slug ) {
+			return yield {
+				type: ROLLBACK_MODULE_CHANGES,
+				payload: { slug },
+			};
 		}
 	),
 };
 
+export const controls = {
+	[ SUBMIT_MODULE_CHANGES ]: createRegistryControl(
+		( registry ) =>
+			( { payload } ) => {
+				const { slug } = payload;
+				const storeName = registry
+					.select( CORE_MODULES )
+					.getModuleStoreName( slug );
+
+				if ( ! storeName ) {
+					return {
+						error: `The module '${ slug }' does not have a store.`,
+					};
+				}
+
+				const { submitChanges } = registry.dispatch( storeName );
+				if ( ! submitChanges ) {
+					return {
+						error: `The module '${ slug }' does not have a submitChanges() action.`,
+					};
+				}
+
+				return submitChanges( slug );
+			}
+	),
+	[ ROLLBACK_MODULE_CHANGES ]: createRegistryControl(
+		( registry ) =>
+			( { payload } ) => {
+				const { slug } = payload;
+				const storeName = registry
+					.select( CORE_MODULES )
+					.getModuleStoreName( slug );
+
+				if ( ! storeName ) {
+					return {
+						error: `The module '${ slug }' does not have a store.`,
+					};
+				}
+
+				const { rollbackChanges } = registry.dispatch( storeName );
+				if ( rollbackChanges ) {
+					return rollbackChanges( slug );
+				}
+			}
+	),
+};
+
 export const selectors = {
+	/**
+	 * Checks whether settings edit dependencies are currently loading for a module.
+	 *
+	 * @since 1.144.0
+	 *
+	 * @param {string} slug Module slug.
+	 * @return {boolean?} Whether or not settings edit dependencies are currently loading for the module,
+	 *                    or `undefined` if the store doesn't exist.
+	 */
+	areSettingsEditDependenciesLoaded: createRegistrySelector(
+		( select ) => ( state, slug ) => {
+			invariant( slug, 'slug is required.' );
+			const storeName = select( CORE_MODULES ).getModuleStoreName( slug );
+			const moduleSelectors = select( storeName );
+			if ( ! moduleSelectors ) {
+				return undefined;
+			}
+
+			return (
+				// If the module doesn't implement the selector, consider dependencies loaded,
+				! moduleSelectors.areSettingsEditDependenciesLoaded ||
+				// otherwise defer to the result of the selector.
+				!! moduleSelectors.areSettingsEditDependenciesLoaded()
+			);
+		}
+	),
+
 	/**
 	 * Checks whether changes are currently being submitted for a module.
 	 *
@@ -107,6 +179,22 @@ export const selectors = {
 		const storeName = select( CORE_MODULES ).getModuleStoreName( slug );
 		return !! select( storeName )?.canSubmitChanges?.();
 	} ),
+
+	/**
+	 * Checks whether there are changes to save for a module.
+	 *
+	 * @since 1.125.0
+	 *
+	 * @param {string} slug Slug for module store.
+	 * @return {boolean} Whether changes have been made in the settings form.
+	 */
+	haveSettingsChanged: createRegistrySelector(
+		( select ) => ( state, slug ) => {
+			invariant( slug, 'slug is required.' );
+			const storeName = select( CORE_MODULES ).getModuleStoreName( slug );
+			return !! select( storeName )?.haveSettingsChanged?.();
+		}
+	),
 };
 
 export default {

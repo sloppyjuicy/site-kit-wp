@@ -20,7 +20,7 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import isPlainObject from 'lodash/isPlainObject';
+import { isPlainObject } from 'lodash';
 
 /**
  * Internal dependencies
@@ -175,9 +175,6 @@ export const createFetchStore = ( {
 			error = e;
 
 			yield receiveError( error, baseName, args );
-
-			// @TODO: Remove the following once all instances of the legacy behavior have been removed.
-			yield receiveError( error );
 
 			yield {
 				payload: { params },

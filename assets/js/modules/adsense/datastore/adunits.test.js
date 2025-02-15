@@ -23,7 +23,6 @@ import API from 'googlesitekit-api';
 import { MODULES_ADSENSE } from './constants';
 import {
 	createTestRegistry,
-	unsubscribeFromAll,
 	untilResolved,
 } from '../../../../../tests/js/utils';
 import * as fixtures from './__fixtures__';
@@ -43,15 +42,13 @@ describe( 'modules/adsense Ad Units', () => {
 		API.setUsingCache( true );
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	describe( 'selectors', () => {
 		describe( 'getAdUnits', () => {
 			it( 'uses a resolver to make a network request', async () => {
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/adunits/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/adunits'
+					),
 					{ body: fixtures.adunits, status: 200 }
 				);
 
@@ -109,7 +106,9 @@ describe( 'modules/adsense Ad Units', () => {
 					data: { status: 500 },
 				};
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/adunits/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/adunits'
+					),
 					{ body: response, status: 500 }
 				);
 

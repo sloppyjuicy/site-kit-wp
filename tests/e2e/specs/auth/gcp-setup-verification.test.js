@@ -21,10 +21,9 @@ describe( 'Site Kit set up flow for the first time with site verification', () =
 	beforeAll( async () => {
 		await page.setRequestInterception( true );
 		useRequestInterception( ( request ) => {
+			const url = request.url();
 			if (
-				request
-					.url()
-					.startsWith( 'https://accounts.google.com/o/oauth2/auth' )
+				url.startsWith( 'https://accounts.google.com/o/oauth2/v2/auth' )
 			) {
 				request.respond( {
 					status: 302,
@@ -35,20 +34,12 @@ describe( 'Site Kit set up flow for the first time with site verification', () =
 						),
 					},
 				} );
-			} else if (
-				request
-					.url()
-					.match(
-						'google-site-kit/v1/modules/search-console/data/searchanalytics'
-					)
-			) {
-				request.respond( { status: 200, body: JSON.stringify( {} ) } );
-			} else if (
-				request.url().match( '/wp-json/google-site-kit/v1/data/' )
-			) {
-				request.respond( {
-					status: 200,
-				} );
+			} else if ( url.match( 'search-console/data/searchanalytics' ) ) {
+				request.respond( { status: 200, body: '[]' } );
+			} else if ( url.match( 'pagespeed-insights/data/pagespeed' ) ) {
+				request.respond( { status: 200, body: '{}' } );
+			} else if ( url.match( 'user/data/survey-timeouts' ) ) {
+				request.respond( { status: 200, body: '[]' } );
 			} else {
 				request.continue();
 			}
@@ -109,7 +100,11 @@ describe( 'Site Kit set up flow for the first time with site verification', () =
 
 		await page.waitForNavigation();
 
-		await expect( page ).toMatchElement( '#js-googlesitekit-dashboard' );
+		await page.waitForSelector( '#js-googlesitekit-main-dashboard' );
+
+		await expect( page ).toMatchElement(
+			'#js-googlesitekit-main-dashboard'
+		);
 		await expect( page ).toMatchElement(
 			'.googlesitekit-publisher-win__title',
 			{
@@ -144,7 +139,11 @@ describe( 'Site Kit set up flow for the first time with site verification', () =
 
 		await page.waitForNavigation();
 
-		await expect( page ).toMatchElement( '#js-googlesitekit-dashboard' );
+		await page.waitForSelector( '#js-googlesitekit-main-dashboard' );
+
+		await expect( page ).toMatchElement(
+			'#js-googlesitekit-main-dashboard'
+		);
 		await expect( page ).toMatchElement(
 			'.googlesitekit-publisher-win__title',
 			{

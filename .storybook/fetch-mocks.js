@@ -25,12 +25,13 @@ export function bootstrapFetchMocks() {
 	// Reset first to prevent errors when hot reloading.
 	fetchMock.reset();
 	fetchMockSaveSettings();
+	fetchMockSaveDataAvailable();
 	fetchMockGetModules();
 	fetchMockCatchAll();
 }
 
 export function fetchMockGetModules() {
-	fetchMock.get( /\/google-site-kit\/v1\/core\/modules\/data\/list/, {
+	fetchMock.get( new RegExp( '/google-site-kit/v1/core/modules/data/list' ), {
 		body: [],
 		status: 200,
 	} );
@@ -38,7 +39,7 @@ export function fetchMockGetModules() {
 
 export function fetchMockSaveSettings() {
 	fetchMock.post(
-		/\/google-site-kit\/v1\/modules\/[\w-]+\/data\/settings/,
+		new RegExp( '/google-site-kit/v1/modules/[\\w-]+/data/settings' ),
 		( url, opts ) => {
 			const { data } = JSON.parse( opts.body );
 			return {
@@ -49,10 +50,36 @@ export function fetchMockSaveSettings() {
 	);
 }
 
+export function fetchMockSaveDataAvailable() {
+	fetchMock.post(
+		new RegExp( '/google-site-kit/v1/modules/[\\w-]+/data/data-available' ),
+		() => {
+			return {
+				status: 200,
+				body: true,
+			};
+		}
+	);
+}
+
 // Catch-all mock to log any other requests.
 export function fetchMockCatchAll() {
 	fetchMock.catch( ( url, opts ) => {
 		global.console.warn( 'fetch', opts.method, url, opts );
+
+		if (
+			url.startsWith(
+				'/google-site-kit/v1/modules/search-console/data/searchanalytics'
+			) ||
+			url.startsWith(
+				'/google-site-kit/v1/modules/analytics-4/data/report'
+			)
+		) {
+			return {
+				status: 200,
+				body: '[]',
+			};
+		}
 
 		return {
 			status: 200,

@@ -20,11 +20,16 @@
  * External dependencies
  */
 import invariant from 'invariant';
+import { intersection } from 'lodash';
+import { original } from 'immer';
 
 /**
  * Internal dependencies
  */
-import { WIDGET_WIDTHS } from './constants';
+import { createRegistrySelector } from 'googlesitekit-data';
+import { isInactiveWidgetState, normalizeWidgetModules } from '../util';
+import { CORE_WIDGETS, WIDGET_WIDTHS } from './constants';
+import { createReducer } from '../../../../js/googlesitekit/data/create-reducer';
 
 const ASSIGN_WIDGET = 'ASSIGN_WIDGET';
 const REGISTER_WIDGET = 'REGISTER_WIDGET';
@@ -37,7 +42,6 @@ const WidgetWidthKeys = Object.keys( WIDGET_WIDTHS )
 
 export const initialState = {
 	areaAssignments: {},
-	registryKey: undefined,
 	widgets: {},
 	widgetStates: {},
 };
@@ -67,14 +71,19 @@ export const actions = {
 	 * Registers a widget with a given slug and settings.
 	 *
 	 * @since 1.9.0
-	 * @since 1.12.0 Added wrapWidget setting.
+	 * @since 1.12.0  Added wrapWidget setting.
+	 * @since 1.138.0 Added hideOnBreakpoints setting.
 	 *
-	 * @param {string}                slug                  Widget's slug.
-	 * @param {Object}                settings              Widget's settings.
-	 * @param {WPComponent}           settings.Component    React component used to display the contents of this widget.
-	 * @param {number}                [settings.priority]   Optional. Widget's priority for ordering (lower number is higher priority, like WordPress hooks). Default is: 10.
-	 * @param {string|Array.<string>} [settings.width]      Optional. Widget's maximum width to occupy. Default is: "quarter". One of: "quarter", "half", "full".
-	 * @param {boolean}               [settings.wrapWidget] Optional. Whether to wrap the component with the <Widget> wrapper. Default is: true.
+	 * @param {string}                slug                         Widget's slug.
+	 * @param {Object}                settings                     Widget's settings.
+	 * @param {WPComponent}           settings.Component           React component used to display the contents of this widget.
+	 * @param {number}                [settings.priority]          Optional. Widget's priority for ordering (lower number is higher priority, like WordPress hooks). Default is: 10.
+	 * @param {string|Array.<string>} [settings.width]             Optional. Widget's maximum width to occupy. Default is: "quarter". One of: "quarter", "half", "full".
+	 * @param {boolean}               [settings.wrapWidget]        Optional. Whether to wrap the component with the <Widget> wrapper. Default is: true.
+	 * @param {string|Array.<string>} [settings.modules]           Optional. Widget's associated modules.
+	 * @param {Function}              [settings.isActive]          Optional. Callback function to determine if the widget is active.
+	 * @param {Function}              [settings.isPreloaded]       Optional. Callback function to determine if the widget should be preloaded if not active (requires isActive).
+	 * @param {Array.<string>}        [settings.hideOnBreakpoints] Optional. Hide widget on selected breakpoints. Array with any of: `BREAKPOINT_SMALL`, `BREAKPOINT_TABLET`, `BREAKPOINT_DESKTOP`, `BREAKPOINT_XLARGE`.
 	 * @return {Object} Redux-style action.
 	 */
 	registerWidget(
@@ -84,6 +93,10 @@ export const actions = {
 			priority = 10,
 			width = WIDGET_WIDTHS.QUARTER,
 			wrapWidget = true,
+			modules,
+			isActive,
+			isPreloaded,
+			hideOnBreakpoints,
 		} = {}
 	) {
 		const allWidths = Object.values( WIDGET_WIDTHS );
@@ -104,6 +117,10 @@ export const actions = {
 					priority,
 					width,
 					wrapWidget,
+					modules: normalizeWidgetModules( modules ),
+					isActive,
+					isPreloaded,
+					hideOnBreakpoints,
 				},
 			},
 			type: REGISTER_WIDGET,
@@ -168,26 +185,22 @@ export const actions = {
 
 export const controls = {};
 
-export const reducer = ( state, { type, payload } ) => {
+export const reducer = createReducer( ( state, { type, payload } ) => {
 	switch ( type ) {
 		case ASSIGN_WIDGET: {
 			const { slug, areaSlugs } = payload;
 
-			const { areaAssignments } = state;
 			areaSlugs.forEach( ( areaSlug ) => {
-				if ( areaAssignments[ areaSlug ] === undefined ) {
-					areaAssignments[ areaSlug ] = [];
+				if ( state.areaAssignments[ areaSlug ] === undefined ) {
+					state.areaAssignments[ areaSlug ] = [];
 				}
 
-				if ( ! areaAssignments[ areaSlug ].includes( slug ) ) {
-					areaAssignments[ areaSlug ].push( slug );
+				if ( ! state.areaAssignments[ areaSlug ].includes( slug ) ) {
+					state.areaAssignments[ areaSlug ].push( slug );
 				}
 			} );
 
-			return {
-				...state,
-				areaAssignments,
-			};
+			return state;
 		}
 
 		case REGISTER_WIDGET: {
@@ -201,59 +214,59 @@ export const reducer = ( state, { type, payload } ) => {
 				return state;
 			}
 
-			return {
-				...state,
-				widgets: {
-					...state.widgets,
-					[ slug ]: {
-						...settings,
-						slug,
-					},
-				},
-			};
+			state.widgets[ slug ] = { ...settings, slug };
+			return state;
 		}
 
 		case SET_WIDGET_STATE: {
 			const { slug, Component, metadata } = payload;
 
-			return {
-				...state,
-				widgetStates: {
-					...state.widgetStates,
-					[ slug ]: {
-						Component,
-						metadata,
-					},
-				},
-			};
+			state.widgetStates[ slug ] = { Component, metadata };
+			return state;
 		}
 
 		case UNSET_WIDGET_STATE: {
 			const { slug, Component, metadata } = payload;
 
-			const widgetStates = { ...state.widgetStates };
 			if (
-				widgetStates?.[ slug ]?.Component === Component &&
-				widgetStates?.[ slug ]?.metadata === metadata
+				state.widgetStates?.[ slug ]?.Component === Component &&
+				original( state.widgetStates?.[ slug ]?.metadata ) === metadata
 			) {
-				delete widgetStates[ slug ];
+				delete state.widgetStates[ slug ];
 			}
 
-			return {
-				...state,
-				widgetStates,
-			};
+			return state;
 		}
 
 		default: {
 			return state;
 		}
 	}
-};
+} );
 
 export const resolvers = {};
 
 export const selectors = {
+	/**
+	 * Checks if a widget with a given slug is active.
+	 *
+	 * Returns `true` if the widget area is active.
+	 * Returns `false` if the widget area is NOT active.
+	 *
+	 * @since 1.47.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @param {string} slug  Widget's slug.
+	 * @return {boolean} `true`/`false` based on whether widget is active.
+	 */
+	isWidgetActive: createRegistrySelector( ( select ) => ( state, slug ) => {
+		invariant( slug, 'slug is required to check a widget is active.' );
+
+		return ! isInactiveWidgetState(
+			select( CORE_WIDGETS ).getWidgetState( slug )
+		);
+	} ),
+
 	/**
 	 * Checks if a widget has been registered with a given slug.
 	 *
@@ -273,6 +286,23 @@ export const selectors = {
 	},
 
 	/**
+	 * Checks if a widget with the given slug is in the preloaded state.
+	 *
+	 * @since 1.101.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @param {string} slug  Widget's slug.
+	 * @return {boolean} `true`/`false` based on whether widget is currently in a preloaded state.
+	 */
+	isWidgetPreloaded: createRegistrySelector(
+		( select ) => ( state, slug ) => {
+			const { widgets } = state;
+
+			return !! widgets[ slug ]?.isPreloaded?.( select );
+		}
+	),
+
+	/**
 	 * Returns all widgets registered for a given widget area.
 	 *
 	 * Returns an array of all widgets for a given area.
@@ -280,22 +310,57 @@ export const selectors = {
 	 * the order provided by the selector.
 	 *
 	 * @since 1.9.0
+	 * @since 1.101.0 Allows widgets to override their active state via an isPreloaded() callback.
 	 *
-	 * @param {Object} state          Data store's state.
-	 * @param {string} widgetAreaSlug Widget context to get areas for.
+	 * @param {Object}                state             Data store's state.
+	 * @param {string}                widgetAreaSlug    Widget context to get areas for.
+	 * @param {Object}                options           Widgets selection options.
+	 * @param {string|Array.<string>} [options.modules] Optional. Widget's associated modules.
 	 * @return {Array} An ordered array of widgets for this area.
 	 */
-	getWidgets( state, widgetAreaSlug ) {
-		invariant( widgetAreaSlug, 'widgetAreaSlug is required.' );
+	getWidgets: createRegistrySelector(
+		( select ) =>
+			( state, widgetAreaSlug, { modules } = {} ) => {
+				invariant( widgetAreaSlug, 'widgetAreaSlug is required.' );
 
-		const { areaAssignments, widgets } = state;
+				const { areaAssignments } = state;
 
-		return Object.values( widgets )
-			.filter( ( widget ) =>
-				areaAssignments[ widgetAreaSlug ]?.includes( widget.slug )
-			)
-			.sort( ( a, b ) => a.priority - b.priority );
-	},
+				let widgets = Object.values( state.widgets )
+					.filter( ( widget ) =>
+						areaAssignments[ widgetAreaSlug ]?.includes(
+							widget.slug
+						)
+					)
+					.filter( ( widget ) => {
+						if ( typeof widget.isActive !== 'function' ) {
+							return true;
+						}
+						if ( widget.isActive( select ) ) {
+							return true;
+						}
+						if ( typeof widget.isPreloaded !== 'function' ) {
+							return false;
+						}
+						return widget.isPreloaded( select );
+					} );
+
+				if ( modules ) {
+					const allowedModules = normalizeWidgetModules( modules );
+					widgets = widgets.filter( ( widget ) => {
+						if ( ! widget.modules?.length ) {
+							return true;
+						}
+
+						return (
+							intersection( widget.modules, allowedModules )
+								.length === widget.modules.length
+						);
+					} );
+				}
+
+				return widgets.sort( ( a, b ) => a.priority - b.priority );
+			}
+	),
 
 	/**
 	 * Returns a single widget, by slug.

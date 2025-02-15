@@ -8,15 +8,17 @@
  * @link      https://sitekit.withgoogle.com
  *
  * @wordpress-plugin
- * Plugin Name: Site Kit by Google
- * Plugin URI:  https://sitekit.withgoogle.com
- * Description: Site Kit is a one-stop solution for WordPress users to use everything Google has to offer to make them successful on the web.
- * Version:     1.38.0
- * Author:      Google
- * Author URI:  https://opensource.google.com
- * License:     Apache License 2.0
- * License URI: https://www.apache.org/licenses/LICENSE-2.0
- * Text Domain: google-site-kit
+ * Plugin Name:       Site Kit by Google
+ * Plugin URI:        https://sitekit.withgoogle.com
+ * Description:       Site Kit is a one-stop solution for WordPress users to use everything Google has to offer to make them successful on the web.
+ * Version:           1.146.0
+ * Requires at least: 5.2
+ * Requires PHP:      7.4
+ * Author:            Google
+ * Author URI:        https://opensource.google.com
+ * License:           Apache License 2.0
+ * License URI:       https://www.apache.org/licenses/LICENSE-2.0
+ * Text Domain:       google-site-kit
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -24,9 +26,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define most essential constants.
-define( 'GOOGLESITEKIT_VERSION', '1.38.0' );
+define( 'GOOGLESITEKIT_VERSION', '1.146.0' );
 define( 'GOOGLESITEKIT_PLUGIN_MAIN_FILE', __FILE__ );
-define( 'GOOGLESITEKIT_PHP_MINIMUM', '5.6.0' );
+define( 'GOOGLESITEKIT_PHP_MINIMUM', '7.4.0' );
+define( 'GOOGLESITEKIT_WP_MINIMUM', '5.2.0' );
 
 /**
  * Handles plugin activation.
@@ -35,6 +38,7 @@ define( 'GOOGLESITEKIT_PHP_MINIMUM', '5.6.0' );
  *
  * @since 1.0.0
  * @since 1.3.0 Minimum required version of PHP raised to 5.6
+ * @since 1.125.0 Minimum required version of PHP raised to 7.4
  * @access private
  *
  * @param bool $network_wide Whether to activate network-wide.
@@ -43,7 +47,15 @@ function googlesitekit_activate_plugin( $network_wide ) {
 	if ( version_compare( PHP_VERSION, GOOGLESITEKIT_PHP_MINIMUM, '<' ) ) {
 		wp_die(
 			/* translators: %s: version number */
-			esc_html( sprintf( __( 'Site Kit requires PHP version %s', 'google-site-kit' ), GOOGLESITEKIT_PHP_MINIMUM ) ),
+			esc_html( sprintf( __( 'Site Kit requires PHP version %s or higher', 'google-site-kit' ), GOOGLESITEKIT_PHP_MINIMUM ) ),
+			esc_html__( 'Error Activating', 'google-site-kit' )
+		);
+	}
+
+	if ( version_compare( get_bloginfo( 'version' ), GOOGLESITEKIT_WP_MINIMUM, '<' ) ) {
+		wp_die(
+			/* translators: %s: version number */
+			esc_html( sprintf( __( 'Site Kit requires WordPress version %s or higher', 'google-site-kit' ), GOOGLESITEKIT_WP_MINIMUM ) ),
 			esc_html__( 'Error Activating', 'google-site-kit' )
 		);
 	}
@@ -105,6 +117,9 @@ function googlesitekit_opcache_reset() {
 }
 add_action( 'upgrader_process_complete', 'googlesitekit_opcache_reset' );
 
-if ( version_compare( PHP_VERSION, GOOGLESITEKIT_PHP_MINIMUM, '>=' ) ) {
+if (
+	version_compare( PHP_VERSION, GOOGLESITEKIT_PHP_MINIMUM, '>=' ) &&
+	version_compare( get_bloginfo( 'version' ), GOOGLESITEKIT_WP_MINIMUM, '>=' )
+) {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/loader.php';
 }

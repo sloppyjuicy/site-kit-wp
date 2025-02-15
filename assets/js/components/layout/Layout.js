@@ -40,6 +40,7 @@ class Layout extends Component {
 			footer,
 			children,
 			title,
+			badge,
 			headerCTALabel,
 			headerCTALink,
 			footerCTALabel,
@@ -48,6 +49,8 @@ class Layout extends Component {
 			className,
 			fill,
 			relative,
+			rounded = false,
+			transparent = false,
 		} = this.props;
 
 		return (
@@ -55,11 +58,14 @@ class Layout extends Component {
 				className={ classnames( 'googlesitekit-layout', className, {
 					'googlesitekit-layout--fill': fill,
 					'googlesitekit-layout--relative': relative,
+					'googlesitekit-layout--rounded': rounded,
+					'googlesitekit-layout--transparent': transparent,
 				} ) }
 			>
 				{ header && (
 					<LayoutHeader
 						title={ title }
+						badge={ badge }
 						ctaLabel={ headerCTALabel }
 						ctaLink={ headerCTALink }
 					/>
@@ -82,6 +88,7 @@ Layout.propTypes = {
 	footer: PropTypes.bool,
 	children: PropTypes.node.isRequired,
 	title: PropTypes.string,
+	badge: PropTypes.node,
 	headerCTALabel: PropTypes.string,
 	headerCTALink: PropTypes.string,
 	footerCTALabel: PropTypes.string,
@@ -90,12 +97,15 @@ Layout.propTypes = {
 	className: PropTypes.string,
 	fill: PropTypes.bool,
 	relative: PropTypes.bool,
+	rounded: PropTypes.bool,
+	transparent: PropTypes.bool,
 };
 
 Layout.defaultProps = {
 	header: false,
 	footer: false,
 	title: '',
+	badge: null,
 	headerCTALabel: '',
 	headerCTALink: '',
 	footerCTALabel: '',

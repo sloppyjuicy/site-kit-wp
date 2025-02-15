@@ -20,35 +20,38 @@
  * External dependencies
  */
 import { useClickAway } from 'react-use';
+import classnames from 'classnames';
 
 /**
  * WordPress dependencies
  */
 import { useCallback, useRef, useState } from '@wordpress/element';
 import { ESCAPE, TAB } from '@wordpress/keycodes';
+import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import DateRangeIcon from '../../svg/date-range.svg';
-import Menu from './Menu';
-import { getAvailableDateRanges } from '../util/date-range';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Menu, Button } from 'googlesitekit-components';
+import DateRangeIcon from '../../svg/icons/date-range.svg';
 import { CORE_USER } from '../googlesitekit/datastore/user/constants';
 import { useKeyCodesInside } from '../hooks/useKeyCodesInside';
-import Button from './Button';
+import { getAvailableDateRanges, trackEvent } from '../util';
+import { CORE_UI } from '../googlesitekit/datastore/ui/constants';
+import useViewContext from '../hooks/useViewContext';
 
-const { useSelect, useDispatch } = Data;
-
-function DateRangeSelector() {
+export default function DateRangeSelector() {
 	const ranges = getAvailableDateRanges();
 	const dateRange = useSelect( ( select ) =>
 		select( CORE_USER ).getDateRange()
 	);
 	const { setDateRange } = useDispatch( CORE_USER );
+	const { resetInViewHook } = useDispatch( CORE_UI );
 
 	const [ menuOpen, setMenuOpen ] = useState( false );
 	const menuWrapperRef = useRef();
+	const viewContext = useViewContext();
 
 	useClickAway( menuWrapperRef, () => setMenuOpen( false ) );
 
@@ -62,10 +65,21 @@ function DateRangeSelector() {
 
 	const handleMenuItemSelect = useCallback(
 		( index ) => {
-			setDateRange( Object.values( ranges )[ index ].slug );
+			const newDateRange = Object.values( ranges )[ index ].slug;
+
+			if ( dateRange !== newDateRange ) {
+				trackEvent(
+					`${ viewContext }_headerbar`,
+					'change_daterange',
+					newDateRange
+				);
+			}
+
+			resetInViewHook();
+			setDateRange( newDateRange );
 			setMenuOpen( false );
 		},
-		[ ranges, setDateRange ]
+		[ ranges, dateRange, resetInViewHook, setDateRange, viewContext ]
 	);
 
 	const currentDateRangeLabel = ranges[ dateRange ]?.label;
@@ -77,13 +91,22 @@ function DateRangeSelector() {
 			className="googlesitekit-date-range-selector googlesitekit-dropdown-menu mdc-menu-surface--anchor"
 		>
 			<Button
-				className="googlesitekit-header__date-range-selector-menu mdc-button--dropdown googlesitekit-header__dropdown"
+				className={ classnames(
+					'mdc-button--dropdown',
+					'googlesitekit-header__dropdown',
+					'googlesitekit-header__date-range-selector-menu',
+					'googlesitekit-border-radius-round--phone',
+					'googlesitekit-button-icon--phone'
+				) }
 				text
 				onClick={ handleMenu }
-				icon={ <DateRangeIcon width="18" height="20" /> }
+				icon={ <DateRangeIcon width="20" height="20" /> }
 				aria-haspopup="menu"
 				aria-expanded={ menuOpen }
 				aria-controls="date-range-selector-menu"
+				title={ __( 'Date range', 'google-site-kit' ) }
+				tooltip
+				tooltipEnterDelayInMS={ 500 }
 			>
 				{ currentDateRangeLabel }
 			</Button>
@@ -97,5 +120,3 @@ function DateRangeSelector() {
 		</div>
 	);
 }
-
-export default DateRangeSelector;

@@ -14,6 +14,7 @@ use Google\Site_Kit\Core\Modules\Module_Settings;
 use Google\Site_Kit\Core\Storage\Setting_With_Legacy_Keys_Trait;
 use Google\Site_Kit\Core\Storage\Setting_With_Owned_Keys_Interface;
 use Google\Site_Kit\Core\Storage\Setting_With_Owned_Keys_Trait;
+use Google\Site_Kit\Core\Storage\Setting_With_ViewOnly_Keys_Interface;
 
 /**
  * Class for AdSense settings.
@@ -22,10 +23,17 @@ use Google\Site_Kit\Core\Storage\Setting_With_Owned_Keys_Trait;
  * @access private
  * @ignore
  */
-class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interface {
-	use Setting_With_Legacy_Keys_Trait, Setting_With_Owned_Keys_Trait;
+class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interface, Setting_With_ViewOnly_Keys_Interface {
+	use Setting_With_Legacy_Keys_Trait;
+	use Setting_With_Owned_Keys_Trait;
 
 	const OPTION = 'googlesitekit_adsense_settings';
+
+	/**
+	 * Various ad blocking recovery setup statuses.
+	 */
+	const AD_BLOCKING_RECOVERY_SETUP_STATUS_TAG_PLACED      = 'tag-placed';
+	const AD_BLOCKING_RECOVERY_SETUP_STATUS_SETUP_CONFIRMED = 'setup-confirmed';
 
 	/**
 	 * Legacy account statuses to be migrated on-the-fly.
@@ -125,6 +133,25 @@ class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interf
 				return $option;
 			}
 		);
+
+		add_filter(
+			'pre_update_option_' . self::OPTION,
+			function ( $value, $old_value ) {
+				if ( isset( $old_value['setupCompletedTimestamp'] ) ) {
+					return $value;
+				}
+
+				if ( ! empty( $old_value['accountStatus'] ) && ! empty( $old_value['siteStatus'] ) && 'ready' === $old_value['accountStatus'] && 'ready' === $old_value['siteStatus'] ) {
+					$value['setupCompletedTimestamp'] = strtotime( '-1 month' );
+				} elseif ( ! empty( $value['accountStatus'] ) && ! empty( $value['siteStatus'] ) && 'ready' === $value['accountStatus'] && 'ready' === $value['siteStatus'] ) {
+					$value['setupCompletedTimestamp'] = time();
+				}
+
+				return $value;
+			},
+			10,
+			2
+		);
 	}
 
 	/**
@@ -142,24 +169,40 @@ class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interf
 	}
 
 	/**
+	 * Returns keys for view-only settings.
+	 *
+	 * @since 1.122.0
+	 *
+	 * @return array An array of keys for view-only settings.
+	 */
+	public function get_view_only_keys() {
+		return array( 'accountID' );
+	}
+
+	/**
 	 * Gets the default value.
 	 *
 	 * @since 1.2.0
+	 * @since 1.102.0 Added settings for the Ad Blocking Recovery feature.
 	 *
 	 * @return array
 	 */
 	protected function get_default() {
 		return array(
-			'ownerID'              => 0,
-			'accountID'            => '',
-			'autoAdsDisabled'      => array(),
-			'clientID'             => '',
-			'accountStatus'        => '',
-			'siteStatus'           => '',
-			'accountSetupComplete' => false,
-			'siteSetupComplete'    => false,
-			'useSnippet'           => true,
-			'webStoriesAdUnit'     => '',
+			'ownerID'                           => 0,
+			'accountID'                         => '',
+			'autoAdsDisabled'                   => array(),
+			'clientID'                          => '',
+			'accountStatus'                     => '',
+			'siteStatus'                        => '',
+			'accountSetupComplete'              => false,
+			'siteSetupComplete'                 => false,
+			'useSnippet'                        => true,
+			'webStoriesAdUnit'                  => '',
+			'setupCompletedTimestamp'           => null,
+			'useAdBlockingRecoverySnippet'      => false,
+			'useAdBlockingRecoveryErrorSnippet' => false,
+			'adBlockingRecoverySetupStatus'     => '',
 		);
 	}
 
@@ -171,7 +214,7 @@ class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interf
 	 * @return callable|null
 	 */
 	protected function get_sanitize_callback() {
-		return function( $option ) {
+		return function ( $option ) {
 			if ( is_array( $option ) ) {
 				if ( isset( $option['accountSetupComplete'] ) ) {
 					$option['accountSetupComplete'] = (bool) $option['accountSetupComplete'];
@@ -184,6 +227,27 @@ class Settings extends Module_Settings implements Setting_With_Owned_Keys_Interf
 				}
 				if ( isset( $option['autoAdsDisabled'] ) ) {
 					$option['autoAdsDisabled'] = (array) $option['autoAdsDisabled'];
+				}
+
+				if ( isset( $option['useAdBlockingRecoverySnippet'] ) ) {
+					$option['useAdBlockingRecoverySnippet'] = (bool) $option['useAdBlockingRecoverySnippet'];
+				}
+				if ( isset( $option['useAdBlockingRecoveryErrorSnippet'] ) ) {
+					$option['useAdBlockingRecoveryErrorSnippet'] = (bool) $option['useAdBlockingRecoveryErrorSnippet'];
+				}
+				if (
+						isset( $option['adBlockingRecoverySetupStatus'] ) &&
+						! in_array(
+							$option['adBlockingRecoverySetupStatus'],
+							array(
+								'',
+								self::AD_BLOCKING_RECOVERY_SETUP_STATUS_TAG_PLACED,
+								self::AD_BLOCKING_RECOVERY_SETUP_STATUS_SETUP_CONFIRMED,
+							),
+							true
+						)
+					) {
+					$option['adBlockingRecoverySetupStatus'] = $this->get()['adBlockingRecoverySetupStatus'];
 				}
 			}
 			return $option;

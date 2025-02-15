@@ -21,37 +21,36 @@
 import classnames from 'classnames';
 import PropTypes from 'prop-types';
 
-export default function PageHeader( props ) {
-	const {
-		title,
-		icon,
-		className,
-		status,
-		statusText,
-		fullWidth,
-		children,
-	} = props;
+/**
+ * Internal dependencies
+ */
+import { Cell, Row } from '../material-components';
+import ConnectedIcon from '../../svg/icons/connected.svg';
+import ExclamationIcon from '../../svg/icons/exclamation.svg';
+import IconWrapper from './IconWrapper';
 
-	const widthClasses = fullWidth
-		? `
-		mdc-layout-grid__cell
-		mdc-layout-grid__cell--span-12
-		`
-		: `
-		mdc-layout-grid__cell
-		mdc-layout-grid__cell--span-4-phone
-		mdc-layout-grid__cell--span-4-tablet
-		mdc-layout-grid__cell--span-6-desktop
-		`;
+export default function PageHeader( props ) {
+	const { title, icon, className, status, statusText, fullWidth, children } =
+		props;
+
+	const titleCellProps = fullWidth
+		? {
+				size: 12,
+		  }
+		: {
+				smSize: 4,
+				mdSize: 4,
+				lgSize: 6,
+		  };
 
 	// Determine whether the details cell should display.
 	const hasDetails = '' !== status || Boolean( children );
 
 	return (
 		<header className="googlesitekit-page-header">
-			<div className="mdc-layout-grid__inner">
+			<Row>
 				{ title && (
-					<div className={ widthClasses }>
+					<Cell { ...titleCellProps }>
 						{ icon }
 						<h1
 							className={ classnames(
@@ -61,18 +60,15 @@ export default function PageHeader( props ) {
 						>
 							{ title }
 						</h1>
-					</div>
+					</Cell>
 				) }
 				{ hasDetails && (
-					<div
-						className="
-						mdc-layout-grid__cell
-						mdc-layout-grid__cell--align-bottom
-						mdc-layout-grid__cell--align-right-tablet
-						mdc-layout-grid__cell--span-4-phone
-						mdc-layout-grid__cell--span-4-tablet
-						mdc-layout-grid__cell--span-6-desktop
-					"
+					<Cell
+						alignBottom
+						mdAlignRight
+						smSize={ 4 }
+						mdSize={ 4 }
+						lgSize={ 6 }
 					>
 						<div className="googlesitekit-page-header__details">
 							{ status && (
@@ -83,13 +79,26 @@ export default function PageHeader( props ) {
 									) }
 								>
 									{ statusText }
+									<IconWrapper>
+										{ 'connected' === status ? (
+											<ConnectedIcon
+												width={ 10 }
+												height={ 8 }
+											/>
+										) : (
+											<ExclamationIcon
+												width={ 2 }
+												height={ 12 }
+											/>
+										) }
+									</IconWrapper>
 								</span>
 							) }
 							{ children }
 						</div>
-					</div>
+					</Cell>
 				) }
-			</div>
+			</Row>
 		</header>
 	);
 }

@@ -26,31 +26,38 @@ import { Slide } from '@material-ui/core';
  * WordPress dependencies
  */
 import { useCallback, useEffect, useState } from '@wordpress/element';
+import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { CORE_FORMS } from '../../googlesitekit/datastore/forms/constants';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import SurveyCompletion from './SurveyCompletion';
 import SurveyQuestionRating from './SurveyQuestionRating';
+import SurveyQuestionOpenText from './SurveyQuestionOpenText';
+import SurveyQuestionMultiSelect from './SurveyQuestionMultiSelect';
+import SurveyQuestionSingleSelect from './SurveyQuestionSingleSelect';
 import SurveyTerms from './SurveyTerms';
-const { useDispatch, useSelect } = Data;
-
-const ComponentMap = {
-	rating: SurveyQuestionRating,
-};
 
 const SURVEY_ANSWER_DELAY_MS = 300;
 
+const TYPE_MULTI_SELECT = 'multi_select';
+const TYPE_OPEN_TEXT = 'open_text';
+const TYPE_RATING = 'rating';
+const TYPE_SINGLE_SELECT = 'single_select';
+
+const KNOWN_QUESTION_TYPES = [
+	TYPE_MULTI_SELECT,
+	TYPE_OPEN_TEXT,
+	TYPE_RATING,
+	TYPE_SINGLE_SELECT,
+];
+
 export default function CurrentSurvey() {
-	const [ hasSentSurveyShownEvent, setHasSentSurveyShownEvent ] = useState(
-		false
-	);
-	const [ hasSentCompletionEvent, setHasSentCompletionEvent ] = useState(
-		false
-	);
+	const [ sentSurveyShownEvent, setSentSurveyShownEvent ] = useState( false );
+	const [ sentCompletionEvent, setSentCompletionEvent ] = useState( false );
 	const [ animateSurvey, setAnimateSurvey ] = useState( false );
 	const [ hasAnsweredQuestion, setHasAnsweredQuestion ] = useState( false );
 
@@ -73,35 +80,66 @@ export default function CurrentSurvey() {
 	const shouldHide = useSelect( ( select ) =>
 		select( CORE_FORMS ).getValue( formName, 'hideSurvey' )
 	);
-	const answers = useSelect( ( select ) =>
-		select( CORE_FORMS ).getValue( formName, 'answers' )
+	const answers = useSelect(
+		( select ) => select( CORE_FORMS ).getValue( formName, 'answers' ) || []
 	);
 
 	const { setValues } = useDispatch( CORE_FORMS );
 	const { sendSurveyEvent } = useDispatch( CORE_USER );
 
 	useEffect( () => {
-		if ( questions?.length && ! hasSentSurveyShownEvent ) {
-			setHasSentSurveyShownEvent( true );
+		if ( questions?.length && ! sentSurveyShownEvent ) {
+			setSentSurveyShownEvent( true );
 			sendSurveyEvent( 'survey_shown' );
 		}
-	}, [ questions, hasSentSurveyShownEvent, sendSurveyEvent ] );
+	}, [ questions, sentSurveyShownEvent, sendSurveyEvent ] );
 
-	const currentQuestionOrdinal =
-		Math.max( 0, ...( answers || [] ).map( ( a ) => a.question_ordinal ) ) +
-		1;
-	const currentQuestion = questions?.find(
-		( { question_ordinal: questionOrdinal } ) =>
-			questionOrdinal === currentQuestionOrdinal
+	// We only have trigger conditions for questions that are answered with
+	// ordinal values right now.
+	const ordinalAnswerMap = answers.reduce(
+		( acc, { question_ordinal: ordinal, answer } ) => ( {
+			...acc,
+			[ ordinal ]: answer.answer.answer_ordinal || answer.answer,
+		} ),
+		{}
 	);
+
+	let currentQuestionOrdinal =
+		Math.max( 0, ...answers.map( ( answer ) => answer.question_ordinal ) ) +
+		1;
+
+	const currentQuestion = questions?.find( ( question ) => {
+		const {
+			question_ordinal: questionOrdinal,
+			trigger_condition: conditions,
+		} = question;
+
+		// Ignore questions that have ordinal lower than the current one.
+		if ( questionOrdinal < currentQuestionOrdinal ) {
+			return false;
+		}
+
+		if ( Array.isArray( conditions ) && conditions.length > 0 ) {
+			for ( const condition of conditions ) {
+				const answer = ordinalAnswerMap[ condition.question_ordinal ];
+				const allowedAnswers = condition.answer_ordinal || [];
+				if ( ! answer || ! allowedAnswers.includes( answer ) ) {
+					currentQuestionOrdinal++;
+					return false;
+				}
+			}
+		}
+
+		return questionOrdinal === currentQuestionOrdinal;
+	} );
 
 	const answerQuestion = useCallback(
 		( answer ) => {
 			if ( hasAnsweredQuestion ) {
 				return;
 			}
-			setHasAnsweredQuestion( true );
 
+			setHasAnsweredQuestion( true );
 			sendSurveyEvent( 'question_answered', {
 				// eslint-disable-next-line camelcase
 				question_ordinal: currentQuestion?.question_ordinal,
@@ -111,7 +149,7 @@ export default function CurrentSurvey() {
 			setTimeout( () => {
 				setValues( formName, {
 					answers: [
-						...( answers || [] ),
+						...answers,
 						{
 							// eslint-disable-next-line camelcase
 							question_ordinal: currentQuestion?.question_ordinal,
@@ -135,23 +173,11 @@ export default function CurrentSurvey() {
 
 	// Check to see if a completion trigger has been met.
 	let triggeredCompletion;
-	// We only have trigger conditions for questions that are answered with
-	// ordinal values right now.
-	const ordinalAnswerMap = answers?.length
-		? answers.reduce( ( acc, answer ) => {
-				return {
-					...acc,
-					[ answer.question_ordinal ]:
-						answer.answer.answer.answer_ordinal,
-				};
-		  }, {} )
-		: [];
+	if ( questions?.length && currentQuestionOrdinal > questions.length ) {
+		triggeredCompletion = ( completions || [] ).find( ( completion ) => {
+			const conditions = completion.trigger_condition || [];
 
-	if ( questions?.length && currentQuestionOrdinal > questions?.length ) {
-		// Use Array.some to avoid looping through all completions; once the first
-		// matching completion has been found, treat the survey as complete.
-		completions?.some( ( completion ) => {
-			completion.trigger_condition.some( ( condition ) => {
+			for ( const condition of conditions ) {
 				// If a question was answered with the appropriate value, a completion
 				// trigger has been fulfilled and we should treat this survey as
 				// complete.
@@ -164,12 +190,6 @@ export default function CurrentSurvey() {
 					triggeredCompletion = completion;
 					return true;
 				}
-
-				return false;
-			} );
-
-			if ( triggeredCompletion ) {
-				return true;
 			}
 
 			return false;
@@ -184,17 +204,14 @@ export default function CurrentSurvey() {
 
 	const ctaOnClick = useCallback( () => {
 		sendSurveyEvent( 'follow_up_link_clicked', {
-			// eslint-disable-next-line camelcase
-			completion_ordinal: triggeredCompletion?.completion_ordinal,
+			completion_ordinal: triggeredCompletion?.completion_ordinal, // eslint-disable-line camelcase
 		} );
 		sendSurveyEvent( 'survey_closed' );
-
 		setValues( formName, { hideSurvey: true } );
 	}, [ formName, sendSurveyEvent, setValues, triggeredCompletion ] );
 
 	const dismissSurvey = useCallback( () => {
 		sendSurveyEvent( 'survey_closed' );
-
 		setAnimateSurvey( false );
 	}, [ sendSurveyEvent ] );
 
@@ -203,14 +220,13 @@ export default function CurrentSurvey() {
 	}, [ formName, setValues ] );
 
 	useEffect( () => {
-		if ( triggeredCompletion && ! hasSentCompletionEvent ) {
-			setHasSentCompletionEvent( true );
+		if ( triggeredCompletion && ! sentCompletionEvent ) {
+			setSentCompletionEvent( true );
 			sendSurveyEvent( 'completion_shown', {
-				// eslint-disable-next-line camelcase
-				completion_ordinal: triggeredCompletion?.completion_ordinal,
+				completion_ordinal: triggeredCompletion?.completion_ordinal, // eslint-disable-line camelcase
 			} );
 		}
-	}, [ hasSentCompletionEvent, sendSurveyEvent, triggeredCompletion ] );
+	}, [ sentCompletionEvent, sendSurveyEvent, triggeredCompletion ] );
 
 	useMount( () => {
 		setAnimateSurvey( true );
@@ -247,12 +263,21 @@ export default function CurrentSurvey() {
 		);
 	}
 
-	const SurveyQuestionComponent =
-		// eslint-disable-next-line camelcase
-		ComponentMap[ currentQuestion?.question_type ];
-	if ( ! SurveyQuestionComponent ) {
+	// eslint-disable-next-line camelcase
+	if ( ! KNOWN_QUESTION_TYPES.includes( currentQuestion?.question_type ) ) {
 		return null;
 	}
+
+	const commonProps = {
+		key: currentQuestion.question_text,
+		answerQuestion,
+		dismissSurvey,
+		question: currentQuestion.question_text,
+		submitButtonText:
+			questions?.length === currentQuestionOrdinal
+				? __( 'Submit', 'google-site-kit' )
+				: __( 'Next', 'google-site-kit' ),
+	};
 
 	return (
 		<Slide
@@ -261,13 +286,33 @@ export default function CurrentSurvey() {
 			onExited={ handleAnimationOnExited }
 		>
 			<div className="googlesitekit-survey">
-				<SurveyQuestionComponent
-					key={ currentQuestion.question_text }
-					answerQuestion={ answerQuestion }
-					choices={ currentQuestion.question.answer_choice }
-					dismissSurvey={ dismissSurvey }
-					question={ currentQuestion.question_text }
-				/>
+				{ currentQuestion.question_type === TYPE_MULTI_SELECT && (
+					<SurveyQuestionMultiSelect
+						{ ...commonProps }
+						choices={ currentQuestion.question.answer_choice }
+						minChoices={ currentQuestion.question.min_choices }
+						maxChoices={ currentQuestion.question.max_choices }
+					/>
+				) }
+				{ currentQuestion.question_type === TYPE_OPEN_TEXT && (
+					<SurveyQuestionOpenText
+						{ ...commonProps }
+						subtitle={ currentQuestion.question.subtitle }
+						placeholder={ currentQuestion.question.placeholder }
+					/>
+				) }
+				{ currentQuestion.question_type === TYPE_RATING && (
+					<SurveyQuestionRating
+						{ ...commonProps }
+						choices={ currentQuestion.question.answer_choice }
+					/>
+				) }
+				{ currentQuestion.question_type === TYPE_SINGLE_SELECT && (
+					<SurveyQuestionSingleSelect
+						{ ...commonProps }
+						choices={ currentQuestion.question.answer_choice }
+					/>
+				) }
 
 				{ isTrackingEnabled === false &&
 					currentQuestion?.question_ordinal === 1 && ( // eslint-disable-line camelcase

@@ -19,46 +19,31 @@
 /**
  * WordPress dependencies
  */
+import { Fragment, createInterpolateElement } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import DisplaySetting from '../../../../components/DisplaySetting';
+import { ProgressBar } from 'googlesitekit-components';
 import Link from '../../../../components/Link';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
-import {
-	trackingExclusionLabels,
-	AUTO_ADS_LOGGED_IN_USERS,
-	AUTO_ADS_CONTENT_CREATORS,
-} from '../common/AutoAdExclusionSwitches';
 import { MODULES_ADSENSE } from '../../datastore/constants';
-import {
-	ACCOUNT_STATUS_DISAPPROVED,
-	ACCOUNT_STATUS_GRAYLISTED,
-	ACCOUNT_STATUS_PENDING,
-	ACCOUNT_STATUS_NO_CLIENT,
-	ACCOUNT_STATUS_APPROVED,
-} from '../../util/status';
 import { ErrorNotices } from '../common';
-const { useSelect } = Data;
+import {
+	getAccountStatusLabel,
+	getSiteStatusLabel,
+	getSnippetLabel,
+	getAutoAdsDisabledMessage,
+} from './utils';
+import AdBlockingRecoverySetupCTANotice from './AdBlockingRecoverySetupCTANotice';
+import VisuallyHidden from '../../../../components/VisuallyHidden';
 
 export default function SettingsView() {
 	const accountID = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getAccountID()
-	);
-	const clientID = useSelect( ( select ) =>
-		select( MODULES_ADSENSE ).getClientID()
-	);
-	const accountStatus = useSelect( ( select ) =>
-		select( MODULES_ADSENSE ).getAccountStatus()
-	);
-	const useSnippet = useSelect( ( select ) =>
-		select( MODULES_ADSENSE ).getUseSnippet()
-	);
-	const existingTag = useSelect( ( select ) =>
-		select( MODULES_ADSENSE ).getExistingTag()
 	);
 	const siteStatusURL = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getServiceAccountManageSitesURL()
@@ -69,76 +54,67 @@ export default function SettingsView() {
 	const webStoriesAdUnit = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getWebStoriesAdUnit()
 	);
+	const accountStatus = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getAccountStatus()
+	);
+	const useAdBlockingRecoverySnippet = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getUseAdBlockingRecoverySnippet()
+	);
+	const useAdBlockingRecoveryErrorSnippet = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getUseAdBlockingRecoveryErrorSnippet()
+	);
+
+	const siteStatus = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getSiteStatus()
+	);
+	const useSnippet = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getUseSnippet()
+	);
+	const adBlockingRecoverySetupStatus = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getAdBlockingRecoverySetupStatus()
+	);
+
+	const existingTag = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getExistingTag()
+	);
+	const clientID = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getClientID()
+	);
 	const autoAdsDisabled = useSelect(
 		( select ) => select( MODULES_ADSENSE ).getAutoAdsDisabled() || []
 	);
 
-	let accountStatusLabel;
-	switch ( accountStatus ) {
-		case ACCOUNT_STATUS_APPROVED:
-			accountStatusLabel = __(
-				'Your account has been approved',
-				'google-site-kit'
-			);
-			break;
-		case ACCOUNT_STATUS_PENDING:
-		case ACCOUNT_STATUS_GRAYLISTED:
-			accountStatusLabel = __(
-				'We’re getting your site ready for ads. This usually takes less than a day, but it can sometimes take a bit longer',
-				'google-site-kit'
-			);
-			break;
-		case ACCOUNT_STATUS_NO_CLIENT:
-		case ACCOUNT_STATUS_DISAPPROVED:
-			accountStatusLabel = __(
-				'You need to fix some issues before your account is approved. Go to AdSense to find out how to fix it',
-				'google-site-kit'
-			);
-			break;
-		default:
-			accountStatusLabel = __(
-				'Your site isn’t ready to show ads yet',
-				'google-site-kit'
-			);
-	}
-
-	let useSnippetLabel;
-	if ( useSnippet ) {
-		useSnippetLabel = __(
-			'The AdSense code has been placed on your site',
-			'google-site-kit'
-		);
-	} else if ( existingTag && existingTag === clientID ) {
-		useSnippetLabel = __(
-			'The AdSense code has been placed by another plugin or theme',
-			'google-site-kit'
-		);
-	} else {
-		useSnippetLabel = __(
-			'The AdSense code has not been placed on your site',
-			'google-site-kit'
-		);
-	}
-
-	let autoAdsDisabledMessage = __(
-		'Ads are currently displayed for all visitors.',
-		'google-site-kit'
+	const privacyMessagingURL = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getServiceURL( {
+			path: `/${ accountID }/privacymessaging/ad_blocking`,
+		} )
 	);
-	if (
-		autoAdsDisabled.includes( AUTO_ADS_LOGGED_IN_USERS ) &&
-		autoAdsDisabled.includes( AUTO_ADS_CONTENT_CREATORS )
-	) {
-		autoAdsDisabledMessage = __(
-			'All logged-in users and users who can write posts',
+
+	const accountStatusLabel = getAccountStatusLabel( accountStatus );
+
+	const siteStatusLabel = getSiteStatusLabel( siteStatus );
+
+	const siteStatusLinkLabel = createInterpolateElement(
+		__(
+			'View <VisuallyHidden>site </VisuallyHidden>in AdSense',
 			'google-site-kit'
+		),
+		{
+			VisuallyHidden: <VisuallyHidden />,
+		}
+	);
+
+	const snippetLabel = getSnippetLabel( useSnippet, existingTag, clientID );
+
+	const autoAdsDisabledMessage = getAutoAdsDisabledMessage( autoAdsDisabled );
+
+	const loading = useSelect( ( select ) => {
+		return (
+			select( MODULES_ADSENSE ).getSettings() === undefined ||
+			select( MODULES_ADSENSE ).hasExistingAdBlockingRecoveryTag() ===
+				undefined
 		);
-	} else if ( autoAdsDisabled.includes( AUTO_ADS_LOGGED_IN_USERS ) ) {
-		autoAdsDisabledMessage =
-			trackingExclusionLabels[ AUTO_ADS_LOGGED_IN_USERS ];
-	} else if ( autoAdsDisabled.includes( AUTO_ADS_CONTENT_CREATORS ) ) {
-		autoAdsDisabledMessage =
-			trackingExclusionLabels[ AUTO_ADS_CONTENT_CREATORS ];
-	}
+	} );
 
 	return (
 		<div className="googlesitekit-setup-module googlesitekit-setup-module--adsense">
@@ -166,16 +142,17 @@ export default function SettingsView() {
 						{ __( 'Site Status', 'google-site-kit' ) }
 					</h5>
 					<p className="googlesitekit-settings-module__meta-item-data">
+						{ siteStatusLabel + ' ' }
 						<Link
 							href={ siteStatusURL }
 							className="googlesitekit-settings-module__cta-button"
-							inherit
 							external
+							disabled={ siteStatusURL === undefined }
+							hideExternalIndicator={
+								siteStatusURL === undefined
+							}
 						>
-							{ __(
-								'Check your site status',
-								'google-site-kit'
-							) }
+							{ siteStatusLinkLabel }
 						</Link>
 					</p>
 				</div>
@@ -187,7 +164,7 @@ export default function SettingsView() {
 						{ __( 'AdSense Code', 'google-site-kit' ) }
 					</h5>
 					<p className="googlesitekit-settings-module__meta-item-data">
-						{ useSnippetLabel }
+						{ snippetLabel }
 					</p>
 				</div>
 			</div>
@@ -206,28 +183,83 @@ export default function SettingsView() {
 			{ webStoriesActive && (
 				<div className="googlesitekit-settings-module__meta-items">
 					<div className="googlesitekit-settings-module__meta-item">
+						<h5 className="googlesitekit-settings-module__meta-item-type">
+							{ __( 'Web Stories Ad Unit', 'google-site-kit' ) }
+						</h5>
+						<p className="googlesitekit-settings-module__meta-item-data">
+							{ ! webStoriesAdUnit && (
+								<span>{ __( 'None', 'google-site-kit' ) }</span>
+							) }
+							{ webStoriesAdUnit && (
+								<DisplaySetting value={ webStoriesAdUnit } />
+							) }
+						</p>
+					</div>
+				</div>
+			) }
+
+			{ adBlockingRecoverySetupStatus?.length > 0 && (
+				<div className="googlesitekit-settings-module__meta-items">
+					{ loading && <ProgressBar small height={ 90 } /> }
+					{ ! loading && (
 						<div className="googlesitekit-settings-module__meta-item">
 							<h5 className="googlesitekit-settings-module__meta-item-type">
 								{ __(
-									'Web Stories Ad Unit',
+									'Ad blocking recovery',
 									'google-site-kit'
 								) }
 							</h5>
-							<p className="googlesitekit-settings-module__meta-item-data">
-								{ ! webStoriesAdUnit && (
-									<span>
-										{ __( 'None', 'google-site-kit' ) }
-									</span>
-								) }
-								{ webStoriesAdUnit && (
-									<DisplaySetting
-										value={ webStoriesAdUnit }
-									/>
-								) }
-							</p>
+							{ ! useAdBlockingRecoverySnippet && (
+								<p className="googlesitekit-settings-module__meta-item-data">
+									{ __(
+										'Ad blocking recovery message is not placed',
+										'google-site-kit'
+									) }
+								</p>
+							) }
+							{ useAdBlockingRecoverySnippet && (
+								<Fragment>
+									<p className="googlesitekit-settings-module__meta-item-data">
+										{ useAdBlockingRecoveryErrorSnippet
+											? __(
+													'Ad blocking recovery message enabled with error protection code',
+													'google-site-kit'
+											  )
+											: __(
+													'Ad blocking recovery message enabled without error protection code',
+													'google-site-kit'
+											  ) }
+									</p>
+									<p className="googlesitekit-settings-module__meta-item-data">
+										{ createInterpolateElement(
+											__(
+												'Identify site visitors that have an ad blocker browser extension installed. These site visitors will see the ad blocking recovery message created in AdSense. <a>Configure your message</a>',
+												'google-site-kit'
+											),
+											{
+												a: (
+													<Link
+														href={
+															privacyMessagingURL
+														}
+														external
+													/>
+												),
+											}
+										) }
+									</p>
+								</Fragment>
+							) }
 						</div>
-					</div>
+					) }
 				</div>
+			) }
+
+			{ ! adBlockingRecoverySetupStatus?.length && (
+				<Fragment>
+					{ loading && <ProgressBar small height={ 135 } /> }
+					{ ! loading && <AdBlockingRecoverySetupCTANotice /> }
+				</Fragment>
 			) }
 		</div>
 	);

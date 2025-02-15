@@ -19,187 +19,185 @@
 /**
  * Internal dependencies
  */
-import { provideModules, provideSiteInfo } from '../../../../tests/js/utils';
 import {
-	setupSearchConsoleAnalyticsMockReports,
-	setupAnalyticsMockReports,
+	provideModules,
+	provideModuleRegistrations,
+	provideUserAuthentication,
+	provideUserCapabilities,
+} from '../../../../tests/js/utils';
+import {
 	setupSearchConsoleMockReports,
-} from './common.stories';
+	setupSearchConsoleAnalytics4GatheringData,
+	setupSearchConsoleAnalytics4ZeroData,
+	widgetDecorators,
+	setupAnalytics4Loading,
+	setupAnalytics4MockReports,
+} from './common-GA4.stories';
+import { Provider as ViewContextProvider } from '../Root/ViewContextContext';
+import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
+import { VIEW_CONTEXT_ADMIN_BAR_VIEW_ONLY } from '../../googlesitekit/constants';
 import WithRegistrySetup from '../../../../tests/js/WithRegistrySetup';
 import AdminBarWidgets from './AdminBarWidgets';
 
-const Template = ( { setupRegistry = () => {}, ...args } ) => (
-	<WithRegistrySetup func={ setupRegistry }>
-		<AdminBarWidgets { ...args } />
-	</WithRegistrySetup>
-);
+function Template( { setupRegistry = () => {}, viewContext, ...args } ) {
+	return (
+		<WithRegistrySetup func={ setupRegistry }>
+			<ViewContextProvider value={ viewContext }>
+				<AdminBarWidgets { ...args } />
+			</ViewContextProvider>
+		</WithRegistrySetup>
+	);
+}
 
 export const Ready = Template.bind( {} );
 Ready.storyName = 'Ready';
 Ready.args = {
-	setupRegistry: setupSearchConsoleAnalyticsMockReports,
+	setupRegistry: ( registry ) => {
+		provideUserAuthentication( registry );
+		setupSearchConsoleMockReports( registry );
+		setupAnalytics4MockReports( registry );
+	},
 };
-Ready.decorators = [
-	( Story ) => {
-		const setupRegistry = ( registry ) => {
-			// Set up the search console and analytics modules stores but provide no data.
-			provideModules( registry, [
-				{
-					slug: 'search-console',
-					active: true,
-					connected: true,
-				},
-				{
-					slug: 'analytics',
-					active: true,
-					connected: true,
-				},
-			] );
-		};
-
-		return (
-			<WithRegistrySetup func={ setupRegistry }>
-				<Story />
-			</WithRegistrySetup>
-		);
-	},
-];
-
-export const DataUnavailable = Template.bind( {} );
-DataUnavailable.storyName = 'Data Unavailable';
-DataUnavailable.decorators = [
-	( Story ) => {
-		const setupRegistry = ( registry ) => {
-			// Set up the search console and analytics modules stores but provide no data.
-			provideModules( registry, [
-				{
-					slug: 'search-console',
-					active: true,
-					connected: true,
-				},
-				{
-					slug: 'analytics',
-					active: true,
-					connected: true,
-				},
-			] );
-		};
-
-		return (
-			<WithRegistrySetup func={ setupRegistry }>
-				<Story />
-			</WithRegistrySetup>
-		);
-	},
-];
-
-export const AnalyticsDataUnavailable = Template.bind( {} );
-AnalyticsDataUnavailable.storyName = 'Data Unavailable: Analytics';
-AnalyticsDataUnavailable.decorators = [
-	( Story ) => {
-		const setupRegistry = ( registry ) => {
-			// Set up the search console and analytics modules stores but provide no data.
-			provideModules( registry, [
-				{
-					slug: 'search-console',
-					active: true,
-					connected: true,
-				},
-				{
-					slug: 'analytics',
-					active: true,
-					connected: true,
-				},
-			] );
-
-			setupSearchConsoleMockReports( registry );
-			setupAnalyticsMockReports( registry, [] );
-		};
-
-		return (
-			<WithRegistrySetup func={ setupRegistry }>
-				<Story />
-			</WithRegistrySetup>
-		);
-	},
-];
 
 export const AnalyticsInactive = Template.bind( {} );
-AnalyticsInactive.storyName = 'Inactive: Analytics';
-AnalyticsInactive.decorators = [
-	( Story ) => {
-		const setupRegistry = ( registry ) => {
-			// Set up the search console and analytics modules stores but provide no data.
-			provideModules( registry, [
-				{
-					slug: 'search-console',
-					active: true,
-					connected: true,
-				},
-			] );
-
-			setupSearchConsoleMockReports( registry );
-		};
-
-		return (
-			<WithRegistrySetup func={ setupRegistry }>
-				<Story />
-			</WithRegistrySetup>
-		);
+AnalyticsInactive.storyName = 'Inactive: Analytics Setup CTA';
+AnalyticsInactive.args = {
+	setupRegistry: ( registry ) => {
+		// Set up the search console module store but provide no data.
+		provideUserAuthentication( registry );
+		provideModules( registry, [
+			{
+				slug: 'search-console',
+				active: true,
+				connected: true,
+			},
+		] );
+		registry.dispatch( CORE_SITE ).receiveSiteInfo( {
+			adminURL: 'http://example.com/wp-admin/',
+		} );
+		setupSearchConsoleMockReports( registry );
 	},
-];
+};
 
-export const SearchConsoleDataUnavailable = Template.bind( {} );
-SearchConsoleDataUnavailable.storyName = 'Data Unavailable: Search Console';
-SearchConsoleDataUnavailable.decorators = [
-	( Story ) => {
-		const setupRegistry = ( registry ) => {
-			// Set up the search console and analytics modules stores but provide no data.
-			provideModules( registry, [
-				{
-					slug: 'search-console',
-					active: true,
-					connected: true,
-				},
-			] );
-
-			setupSearchConsoleMockReports( registry, [] );
-		};
-
-		return (
-			<WithRegistrySetup func={ setupRegistry }>
-				<Story />
-			</WithRegistrySetup>
-		);
+export const AnalyticsInactiveNewCompleteActivation = Template.bind( {} );
+AnalyticsInactiveNewCompleteActivation.storyName =
+	'Inactive: Analytics Complete Activation CTA';
+AnalyticsInactiveNewCompleteActivation.args = {
+	setupRegistry: ( registry ) => {
+		// Set up the analytics module store but provide no data.
+		provideModules( registry, [
+			{
+				slug: 'analytics-4',
+				active: true,
+				connected: false,
+			},
+		] );
+		provideModuleRegistrations( registry );
+		provideUserAuthentication( registry );
+		setupSearchConsoleMockReports( registry );
 	},
-];
+};
+
+export const Analytics4WidgetsLoading = Template.bind( {} );
+Analytics4WidgetsLoading.storyName = 'GA4 Widgets Loading';
+Analytics4WidgetsLoading.args = {
+	setupRegistry: ( registry ) => {
+		// Set up the analytics module store but provide no data.
+		provideModules( registry, [
+			{
+				slug: 'analytics-4',
+				active: true,
+				connected: true,
+			},
+		] );
+		provideModuleRegistrations( registry );
+		provideUserAuthentication( registry );
+		setupSearchConsoleMockReports( registry );
+		setupAnalytics4Loading( registry );
+	},
+};
+
+export const ViewOnlyAnalyticsAndSearchConsole = Template.bind( {} );
+ViewOnlyAnalyticsAndSearchConsole.storyName =
+	'View Only Analytics And Search Console';
+ViewOnlyAnalyticsAndSearchConsole.args = {
+	setupRegistry: ( registry ) => {
+		provideModules( registry, [
+			{
+				slug: 'analytics-4',
+				active: true,
+				connected: true,
+			},
+		] );
+		provideModuleRegistrations( registry );
+		provideUserAuthentication( registry, { authenticated: false } );
+		provideUserCapabilities( registry, {
+			'googlesitekit_read_shared_module_data::["search-console"]': true,
+			'googlesitekit_read_shared_module_data::["analytics-4"]': true,
+		} );
+		setupSearchConsoleMockReports( registry );
+		setupAnalytics4MockReports( registry );
+	},
+	viewContext: VIEW_CONTEXT_ADMIN_BAR_VIEW_ONLY,
+};
+
+export const ViewOnlyAnalytics = Template.bind( {} );
+ViewOnlyAnalytics.storyName = 'View Only Analytics';
+ViewOnlyAnalytics.args = {
+	setupRegistry: ( registry ) => {
+		provideModules( registry, [
+			{
+				slug: 'analytics-4',
+				active: true,
+				connected: true,
+			},
+		] );
+		provideModuleRegistrations( registry );
+		provideUserAuthentication( registry, { authenticated: false } );
+		provideUserCapabilities( registry, {
+			'googlesitekit_read_shared_module_data::["analytics-4"]': true,
+		} );
+		setupSearchConsoleMockReports( registry );
+		setupAnalytics4MockReports( registry );
+	},
+	viewContext: VIEW_CONTEXT_ADMIN_BAR_VIEW_ONLY,
+};
+
+export const ViewOnlySearchConsole = Template.bind( {} );
+ViewOnlySearchConsole.storyName = 'View Only Search Console';
+ViewOnlySearchConsole.args = {
+	setupRegistry: ( registry ) => {
+		provideModules( registry, [
+			{
+				slug: 'analytics-4',
+				active: true,
+				connected: true,
+			},
+		] );
+		provideModuleRegistrations( registry );
+		provideUserAuthentication( registry, { authenticated: false } );
+		provideUserCapabilities( registry, {
+			'googlesitekit_read_shared_module_data::["search-console"]': true,
+		} );
+		setupSearchConsoleMockReports( registry );
+		setupAnalytics4MockReports( registry );
+	},
+	viewContext: VIEW_CONTEXT_ADMIN_BAR_VIEW_ONLY,
+};
+
+export const GatheringData = Template.bind( {} );
+GatheringData.storyName = 'Gathering Data';
+GatheringData.args = {
+	setupRegistry: setupSearchConsoleAnalytics4GatheringData,
+};
+
+export const ZeroData = Template.bind( {} );
+ZeroData.storyName = 'Zero Data';
+ZeroData.args = {
+	setupRegistry: setupSearchConsoleAnalytics4ZeroData,
+};
 
 export default {
 	title: 'Views/AdminBarApp/AdminBarWidgets',
-	decorators: [
-		( Story, { args } ) => {
-			const setupRegistry = ( registry ) => {
-				// Set some site information.
-				provideSiteInfo( registry, {
-					currentEntityURL: 'https://www.sitekitbygoogle.com/blog/',
-					currentEntityTitle: 'Blog test post for Google Site Kit',
-				} );
-
-				// Call story-specific setup.
-				if ( typeof args?.setupRegistry === 'function' ) {
-					args.setupRegistry( registry );
-				}
-			};
-
-			return (
-				<WithRegistrySetup func={ setupRegistry }>
-					<div className="googlesitekit-widget">
-						<div className="googlesitekit-widget__body">
-							<Story />
-						</div>
-					</div>
-				</WithRegistrySetup>
-			);
-		},
-	],
+	decorators: widgetDecorators,
 };

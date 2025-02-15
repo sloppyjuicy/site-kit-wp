@@ -19,8 +19,8 @@ class Module_Web_TagTest extends TestCase {
 
 	private $module_slug;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		$this->module_slug = 'fake-module';
 		$this->web_tag     = new FakeModule_Web_Tag( 'test-tag-id', $this->module_slug );
@@ -48,5 +48,4 @@ class Module_Web_TagTest extends TestCase {
 
 		$this->assertEquals( ' type="text/plain" data-block-on-consent', $this->web_tag->get_tag_blocked_on_consent_attribute() );
 	}
-
 }

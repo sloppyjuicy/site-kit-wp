@@ -19,14 +19,24 @@
 /**
  * External dependencies
  */
-import PropTypes from 'prop-types';
 import classnames from 'classnames';
+import PropTypes from 'prop-types';
 import { Link as RouterLink } from 'react-router-dom';
 
 /**
  * WordPress dependencies
  */
+import { forwardRef } from '@wordpress/element';
 import { _x } from '@wordpress/i18n';
+
+/**
+ * Internal dependencies
+ */
+import ArrowIcon from '../../svg/icons/arrow.svg';
+import ArrowInverseIcon from '../../svg/icons/arrow-inverse.svg';
+import BackIcon from '../../svg/icons/back.svg';
+import ExternalIcon from '../../svg/icons/external.svg';
+import IconWrapper from './IconWrapper';
 
 const BUTTON = 'BUTTON';
 const BUTTON_DISABLED = 'BUTTON_DISABLED';
@@ -34,25 +44,32 @@ const EXTERNAL_LINK = 'EXTERNAL_LINK';
 const LINK = 'LINK';
 const ROUTER_LINK = 'ROUTER_LINK';
 
-function Link( {
-	'aria-label': ariaLabelProp,
-	arrow,
-	back,
-	caps,
-	children,
-	className,
-	danger,
-	disabled,
-	external,
-	hideExternalIndicator,
-	href,
-	inherit,
-	inverse,
-	onClick,
-	small,
-	to,
-	...otherProps
-} ) {
+const Link = forwardRef( ( props, ref ) => {
+	const {
+		'aria-label': ariaLabelProp,
+		secondary = false,
+		arrow = false,
+		back = false,
+		caps = false,
+		children,
+		className = '',
+		danger = false,
+		disabled = false,
+		external = false,
+		hideExternalIndicator = false,
+		href = '',
+		inverse = false,
+		noFlex = false,
+		onClick,
+		small = false,
+		standalone = false,
+		linkButton = false,
+		to,
+		leadingIcon,
+		trailingIcon,
+		...otherProps
+	} = props;
+
 	const getType = () => {
 		// Force button element if `onClick` prop is passed and there's no `href`
 		// or `to` prop.
@@ -137,33 +154,70 @@ function Link( {
 	const LinkComponent = getLinkComponent();
 	const ariaLabel = getAriaLabel();
 
+	// Set the prefix/suffix icons, based on the type of link this is and
+	// the props supplied.
+	let leadingIconToUse = leadingIcon;
+	let trailingIconToUse = trailingIcon;
+
+	if ( back ) {
+		leadingIconToUse = <BackIcon width={ 14 } height={ 14 } />;
+	}
+
+	if ( external && ! hideExternalIndicator ) {
+		trailingIconToUse = <ExternalIcon width={ 14 } height={ 14 } />;
+	}
+
+	if ( arrow && ! inverse ) {
+		trailingIconToUse = <ArrowIcon width={ 14 } height={ 14 } />;
+	}
+
+	if ( arrow && inverse ) {
+		trailingIconToUse = <ArrowInverseIcon width={ 14 } height={ 14 } />;
+	}
+
 	return (
 		<LinkComponent
 			aria-label={ ariaLabel }
 			className={ classnames( 'googlesitekit-cta-link', className, {
-				'googlesitekit-cta-link--arrow': arrow,
-				'googlesitekit-cta-link--external':
-					external && ! hideExternalIndicator,
+				'googlesitekit-cta-link--secondary': secondary,
 				'googlesitekit-cta-link--inverse': inverse,
-				'googlesitekit-cta-link--back': back,
 				'googlesitekit-cta-link--small': small,
-				'googlesitekit-cta-link--inherit': inherit,
 				'googlesitekit-cta-link--caps': caps,
 				'googlesitekit-cta-link--danger': danger,
 				'googlesitekit-cta-link--disabled': disabled,
+				'googlesitekit-cta-link--standalone': standalone,
+				'googlesitekit-cta-link--link-button': linkButton,
+				'googlesitekit-cta-link--no-flex': !! noFlex,
 			} ) }
 			disabled={ disabled }
-			href={ type === LINK || type === EXTERNAL_LINK ? href : undefined }
+			href={
+				( type === LINK || type === EXTERNAL_LINK ) && ! disabled
+					? href
+					: undefined
+			}
 			onClick={ onClick }
 			rel={ type === EXTERNAL_LINK ? 'noopener noreferrer' : undefined }
+			ref={ ref }
 			target={ type === EXTERNAL_LINK ? '_blank' : undefined }
 			to={ to }
 			{ ...otherProps }
 		>
-			{ children }
+			{ !! leadingIconToUse && (
+				<IconWrapper marginRight={ 5 }>
+					{ leadingIconToUse }
+				</IconWrapper>
+			) }
+			<span className="googlesitekit-cta-link__contents">
+				{ children }
+			</span>
+			{ !! trailingIconToUse && (
+				<IconWrapper marginLeft={ 5 }>
+					{ trailingIconToUse }
+				</IconWrapper>
+			) }
 		</LinkComponent>
 	);
-}
+} );
 
 Link.propTypes = {
 	arrow: PropTypes.bool,
@@ -176,26 +230,15 @@ Link.propTypes = {
 	external: PropTypes.bool,
 	hideExternalIndicator: PropTypes.bool,
 	href: PropTypes.string,
-	inherit: PropTypes.bool,
 	inverse: PropTypes.bool,
+	leadingIcon: PropTypes.node,
+	linkButton: PropTypes.bool,
+	noFlex: PropTypes.bool,
 	onClick: PropTypes.func,
 	small: PropTypes.bool,
+	standalone: PropTypes.bool,
 	to: PropTypes.string,
-};
-
-Link.defaultProps = {
-	arrow: false,
-	back: false,
-	caps: false,
-	className: '',
-	danger: false,
-	disabled: false,
-	external: false,
-	hideExternalIndicator: false,
-	href: '',
-	inherit: false,
-	inverse: false,
-	small: false,
+	trailingIcon: PropTypes.node,
 };
 
 export default Link;

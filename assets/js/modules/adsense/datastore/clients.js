@@ -25,7 +25,11 @@ import invariant from 'invariant';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	createRegistrySelector,
+	commonActions,
+	combineStores,
+} from 'googlesitekit-data';
 import { MODULES_ADSENSE } from './constants';
 import { isValidAccountID } from '../util';
 import { createFetchStore } from '../../../googlesitekit/data/create-fetch-store';
@@ -48,6 +52,10 @@ const fetchGetClientsStore = createFetchStore( {
 		);
 	},
 	reducerCallback: ( state, clients, { accountID } ) => {
+		if ( ! Array.isArray( clients ) ) {
+			return state;
+		}
+
 		return {
 			...state,
 			clients: {
@@ -70,7 +78,7 @@ const baseInitialState = {
 
 const baseActions = {
 	*resetClients() {
-		const { dispatch } = yield Data.commonActions.getRegistry();
+		const { dispatch } = yield commonActions.getRegistry();
 
 		yield {
 			payload: {},
@@ -121,7 +129,7 @@ const baseResolvers = {
 			return;
 		}
 
-		const registry = yield Data.commonActions.getRegistry();
+		const registry = yield commonActions.getRegistry();
 		const existingClients = registry
 			.select( MODULES_ADSENSE )
 			.getClients( accountID );
@@ -155,9 +163,43 @@ const baseSelectors = {
 
 		return clients[ accountID ];
 	},
+
+	/**
+	 * Gets the AdSense For Content (AFC) client for the given AdSense account.
+	 *
+	 * @since 1.74.0
+	 *
+	 * @param {Object} state     Data store's state.
+	 * @param {string} accountID The AdSense Account ID to fetch AFC client for.
+	 * @return {(Object|null|undefined)} An AdSense AFC client, or `null` if none exists; `undefined` if not loaded.
+	 */
+	getAFCClient: createRegistrySelector(
+		( select ) => ( state, accountID ) => {
+			if ( undefined === accountID ) {
+				return undefined;
+			}
+
+			const clients = select( MODULES_ADSENSE ).getClients( accountID );
+
+			if ( clients === undefined ) {
+				return undefined;
+			}
+
+			const afcClients = clients.filter( ( client ) => {
+				return 'AFC' === client.productCode;
+			} );
+
+			if ( ! afcClients.length ) {
+				return null;
+			}
+
+			// Pick the first AFC client. There should only ever be one anyway.
+			return afcClients[ 0 ];
+		}
+	),
 };
 
-const store = Data.combineStores( fetchGetClientsStore, {
+const store = combineStores( fetchGetClientsStore, {
 	initialState: baseInitialState,
 	actions: baseActions,
 	reducer: baseReducer,

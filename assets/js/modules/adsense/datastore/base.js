@@ -22,8 +22,10 @@
 import Modules from 'googlesitekit-modules';
 import { MODULES_ADSENSE } from './constants';
 import { validateCanSubmitChanges } from './settings';
+import { CORE_USER } from '../../../googlesitekit/datastore/user/constants';
 
 const baseModuleStore = Modules.createModuleStore( 'adsense', {
+	ownedSettingsSlugs: [ 'accountID', 'clientID' ],
 	storeName: MODULES_ADSENSE,
 	settingSlugs: [
 		'accountID',
@@ -36,9 +38,17 @@ const baseModuleStore = Modules.createModuleStore( 'adsense', {
 		'ownerID',
 		'webStoriesAdUnit',
 		'autoAdsDisabled',
+		'setupCompletedTimestamp',
+		'useAdBlockingRecoverySnippet',
+		'useAdBlockingRecoveryErrorSnippet',
+		'adBlockingRecoverySetupStatus',
 	],
-	adminPage: 'googlesitekit-module-adsense',
 	validateCanSubmitChanges,
+	validateIsSetupBlocked: ( select ) => {
+		if ( select( CORE_USER ).isAdBlockerActive() ) {
+			throw new Error( 'Ad blocker detected' );
+		}
+	},
 } );
 
 export default baseModuleStore;

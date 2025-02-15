@@ -25,7 +25,6 @@ import { ACCOUNT_STATUS_APPROVED, SITE_STATUS_ADDED } from '../util/status';
 import {
 	createTestRegistry,
 	subscribeUntil,
-	unsubscribeFromAll,
 } from '../../../../../tests/js/utils';
 import { getItem, setItem } from '../../../googlesitekit/api/cache';
 import { createCacheKey } from '../../../googlesitekit/api';
@@ -62,10 +61,6 @@ describe( 'modules/adsense settings', () => {
 		API.setUsingCache( true );
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	describe( 'actions', () => {
 		describe( 'submitChanges', () => {
 			it( 'dispatches saveSettings', async () => {
@@ -73,7 +68,9 @@ describe( 'modules/adsense settings', () => {
 					.dispatch( MODULES_ADSENSE )
 					.setSettings( validSettings );
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/settings/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/settings'
+					),
 					{ body: validSettings, status: 200 }
 				);
 
@@ -81,7 +78,9 @@ describe( 'modules/adsense settings', () => {
 
 				expect( fetchMock ).toHaveFetchedTimes( 1 );
 				expect( fetchMock ).toHaveFetched(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/settings/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/settings'
+					),
 					{
 						body: {
 							data: validSettings,
@@ -99,7 +98,9 @@ describe( 'modules/adsense settings', () => {
 					.setSettings( validSettings );
 
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/settings/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/settings'
+					),
 					{ body: wpError, status: 500 }
 				);
 				await registry.dispatch( MODULES_ADSENSE ).submitChanges();
@@ -121,7 +122,9 @@ describe( 'modules/adsense settings', () => {
 					.setSettings( validSettings );
 
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/settings/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/settings'
+					),
 					{ body: validSettings, status: 200 }
 				);
 
@@ -141,24 +144,22 @@ describe( 'modules/adsense settings', () => {
 			} );
 		} );
 
-		describe( 'receiveOriginalAccountStatus', () => {
-			it( 'requires the originalAccountStatus param', () => {
+		describe( 'receiveOriginalUseSnippet', () => {
+			it( 'requires the originalUseSnippet param', () => {
 				expect( () => {
 					registry
 						.dispatch( MODULES_ADSENSE )
-						.receiveOriginalAccountStatus();
-				} ).toThrow( 'originalAccountStatus is required.' );
+						.receiveOriginalUseSnippet();
+				} ).toThrow( 'originalUseSnippet is required.' );
 			} );
 
-			it( 'receives and sets originalAccountStatus from parameter', () => {
+			it( 'receives and sets originalUseSnippet from parameter', () => {
 				registry
 					.dispatch( MODULES_ADSENSE )
-					.receiveOriginalAccountStatus( 'something' );
+					.receiveOriginalUseSnippet( true );
 				expect(
-					registry
-						.select( MODULES_ADSENSE )
-						.getOriginalAccountStatus()
-				).toEqual( 'something' );
+					registry.select( MODULES_ADSENSE ).getOriginalUseSnippet()
+				).toBe( true );
 			} );
 		} );
 	} );
@@ -252,87 +253,79 @@ describe( 'modules/adsense settings', () => {
 			} );
 		} );
 
-		describe( 'getOriginalAccountStatus', () => {
+		describe( 'getOriginalUseSnippet', () => {
 			it( 'uses a resolver to make a network request via getSettings', async () => {
-				const response = { accountStatus: 'some-status' };
+				const response = { useSnippet: false };
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/modules\/adsense\/data\/settings/,
+					new RegExp(
+						'^/google-site-kit/v1/modules/adsense/data/settings'
+					),
 					{ body: response, status: 200 }
 				);
 
-				const initialOriginalAccountStatus = registry
+				const initialOriginalUseSnippet = registry
 					.select( MODULES_ADSENSE )
-					.getOriginalAccountStatus();
+					.getOriginalUseSnippet();
 				// Settings will be their initial value while being fetched.
-				expect( initialOriginalAccountStatus ).toEqual( undefined );
+				expect( initialOriginalUseSnippet ).toBeUndefined();
 
 				await subscribeUntil(
 					registry,
 					() =>
 						registry
 							.select( MODULES_ADSENSE )
-							.hasFinishedResolution(
-								'getOriginalAccountStatus'
-							) &&
+							.hasFinishedResolution( 'getOriginalUseSnippet' ) &&
 						registry
 							.select( MODULES_ADSENSE )
 							.hasFinishedResolution( 'getSettings' )
 				);
 
-				const originalAccountStatus = registry
+				const originalUseSnippet = registry
 					.select( MODULES_ADSENSE )
-					.getOriginalAccountStatus();
+					.getOriginalUseSnippet();
 
 				expect( fetchMock ).toHaveFetchedTimes( 1 );
-				expect( originalAccountStatus ).toEqual(
-					response.accountStatus
-				);
+				expect( originalUseSnippet ).toBe( response.useSnippet );
 			} );
 
-			it( 'does not make a network request if original account status is already set', async () => {
-				const value = 'a-status';
+			it( 'does not make a network request if original useSnippet is already set', async () => {
+				const value = true;
 				registry
 					.dispatch( MODULES_ADSENSE )
-					.receiveOriginalAccountStatus( value );
+					.receiveOriginalUseSnippet( value );
 
 				expect(
-					registry
-						.select( MODULES_ADSENSE )
-						.getOriginalAccountStatus()
-				).toEqual( value );
+					registry.select( MODULES_ADSENSE ).getOriginalUseSnippet()
+				).toBe( value );
 
 				await subscribeUntil( registry, () =>
 					registry
 						.select( MODULES_ADSENSE )
-						.hasFinishedResolution( 'getOriginalAccountStatus' )
+						.hasFinishedResolution( 'getOriginalUseSnippet' )
 				);
 
 				expect( fetchMock ).not.toHaveFetched();
 			} );
 
-			it( 'does not override original account status when receiving settings again', async () => {
+			it( 'does not override original useSnippet when receiving settings again', () => {
 				// Set original value.
-				const value = 'a-status';
+				const value = true;
 				registry
 					.dispatch( MODULES_ADSENSE )
-					.receiveOriginalAccountStatus( value );
+					.receiveOriginalUseSnippet( value );
 
 				expect(
-					registry
-						.select( MODULES_ADSENSE )
-						.getOriginalAccountStatus()
-				).toEqual( value );
+					registry.select( MODULES_ADSENSE ).getOriginalUseSnippet()
+				).toBe( value );
 
 				// Despite receiving settings, the value should not be updated
 				// as it was already set.
 				registry
 					.dispatch( MODULES_ADSENSE )
-					.receiveGetSettings( { accountStatus: 'another-status' } );
+					.receiveGetSettings( { useSnippet: false } );
 				expect(
-					registry
-						.select( MODULES_ADSENSE )
-						.getOriginalAccountStatus()
-				).toEqual( value );
+					registry.select( MODULES_ADSENSE ).getOriginalUseSnippet()
+				).toBe( value );
 			} );
 		} );
 	} );

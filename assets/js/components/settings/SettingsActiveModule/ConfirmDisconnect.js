@@ -31,16 +31,19 @@ import { ESCAPE } from '@wordpress/keycodes';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import ModalDialog from '../../ModalDialog';
 import { CORE_LOCATION } from '../../../googlesitekit/datastore/location/constants';
 import { CORE_MODULES } from '../../../googlesitekit/modules/datastore/constants';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
 import { CORE_UI } from '../../../googlesitekit/datastore/ui/constants';
-import { clearWebStorage } from '../../../util';
-import Dialog from '../../Dialog';
-const { useSelect, useDispatch } = Data;
+import { clearCache } from '../../../googlesitekit/api/cache';
+import { listFormat, trackEvent } from '../../../util';
+import useViewContext from '../../../hooks/useViewContext';
 
 export default function ConfirmDisconnect( { slug } ) {
+	const viewContext = useViewContext();
+
 	const [ isDeactivating, setIsDeactivating ] = useState( false );
 	const { setValue } = useDispatch( CORE_UI );
 
@@ -94,7 +97,14 @@ export default function ConfirmDisconnect( { slug } ) {
 		const { error } = await deactivateModule( slug );
 
 		if ( ! error ) {
-			clearWebStorage();
+			await clearCache();
+
+			await trackEvent(
+				`${ viewContext }_module-list`,
+				'deactivate_module',
+				slug
+			);
+
 			navigateTo( settingsURL );
 		} else {
 			// Only set deactivating to false if there is an error.
@@ -106,6 +116,7 @@ export default function ConfirmDisconnect( { slug } ) {
 		settingsURL,
 		deactivateModule,
 		navigateTo,
+		viewContext,
 	] );
 
 	if ( ! module || ! dialogActive ) {
@@ -120,38 +131,25 @@ export default function ConfirmDisconnect( { slug } ) {
 		name
 	);
 
-	const hasFeatures = features?.length > 0;
-
-	const subtitle = hasFeatures
-		? sprintf(
-				/* translators: %s: module name */
-				__(
-					'By disconnecting the %s module from Site Kit, you will no longer have access to:',
-					'google-site-kit'
-				),
-				name
-		  )
-		: null;
-
 	let dependentModulesText = null;
 	if ( dependentModules.length > 0 ) {
 		dependentModulesText = sprintf(
-			/* translators: %1$s: module name, %2$s: list of dependent modules */
+			/* translators: 1: module name, 2: list of dependent modules */
 			__(
 				'these active modules depend on %1$s and will also be disconnected: %2$s',
 				'google-site-kit'
 			),
 			name,
-			dependentModules
+			listFormat( dependentModules )
 		);
 	}
 
 	return (
-		<Dialog
+		<ModalDialog
+			className="googlesitekit-settings-module__confirm-disconnect-modal"
 			dialogActive
 			handleDialog={ handleDialog }
 			title={ title }
-			subtitle={ subtitle }
 			provides={ features }
 			handleConfirm={ handleDisconnect }
 			dependentModules={ dependentModulesText }

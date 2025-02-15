@@ -25,15 +25,19 @@ describe( 'Site Kit dashboard post search', () => {
 
 		await page.setRequestInterception( true );
 		useRequestInterception( ( request ) => {
-			if ( request.url().match( 'google-site-kit/v1/data/' ) ) {
-				request.respond( {
-					status: 200,
-				} );
-			} else if (
+			if (
 				request
 					.url()
 					.match(
 						'google-site-kit/v1/modules/search-console/data/searchanalytics'
+					)
+			) {
+				request.respond( { status: 200, body: JSON.stringify( [] ) } );
+			} else if (
+				request
+					.url()
+					.match(
+						'google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
 					)
 			) {
 				request.respond( { status: 200, body: JSON.stringify( {} ) } );
@@ -52,11 +56,13 @@ describe( 'Site Kit dashboard post search', () => {
 	} );
 
 	it( 'displays results when searching with a post title, and loads the details page when clicking View Data', async () => {
-		const postSearcher = await page.$( '.googlesitekit-post-searcher' );
+		const postSearcher = await page.$( '.googlesitekit-entity-search' );
+		await page.click( '.googlesitekit-entity-search .mdc-button' );
+		await page.waitForSelector( '.googlesitekit-entity-search__actions' );
 
 		await expect( postSearcher ).toFill( 'input', 'hello' );
 		await page.waitForResponse( ( res ) =>
-			res.url().match( 'core/search/data/post-search' )
+			res.url().match( 'core/search/data/entity-search' )
 		);
 
 		// Ensure expected options appear.
@@ -74,24 +80,24 @@ describe( 'Site Kit dashboard post search', () => {
 		await expect( postSearcher ).toClick( '.autocomplete__option', {
 			text: /hello world/i,
 		} );
+
+		await page.waitForNavigation();
+
 		// Search input becomes the post title
+		await page.waitForSelector( '.googlesitekit-entity-search' );
+		const entitySearcher = await page.$( '.googlesitekit-entity-search' );
 		expect(
-			await postSearcher.$eval( 'input', ( el ) => el.value )
+			await entitySearcher.$eval( 'input', ( el ) => el.value )
 		).toEqual( 'Hello world!' );
 
-		await Promise.all( [
-			page.waitForNavigation(),
-			expect( postSearcher ).toClick( 'button', { text: /view data/i } ),
-		] );
-
 		await expect( page ).toMatchElement(
-			'.googlesitekit-page-header__title',
+			'.googlesitekit-entity-header__back',
 			{
-				text: /detailed page stats/i,
+				text: /back to dashboard/i,
 			}
 		);
 		await expect( page ).toMatchElement(
-			'.googlesitekit-dashboard-single-url__title',
+			'.googlesitekit-entity-header__details p',
 			{
 				text: 'Hello world!',
 			}
@@ -99,14 +105,16 @@ describe( 'Site Kit dashboard post search', () => {
 	} );
 
 	it( 'displays results when searching with a URL, and loads the details page when clicking View Data', async () => {
-		const postSearcher = await page.$( '.googlesitekit-post-searcher' );
+		const postSearcher = await page.$( '.googlesitekit-entity-search' );
+		await page.click( '.googlesitekit-entity-search .mdc-button' );
+		await page.waitForSelector( '.googlesitekit-entity-search__actions' );
 
 		await expect( postSearcher ).toFill(
 			'input',
 			createURL( 'hello-world' )
 		);
 		await page.waitForResponse( ( res ) =>
-			res.url().match( 'core/search/data/post-search' )
+			res.url().match( 'core/search/data/entity-search' )
 		);
 
 		// Ensure expected options appear.
@@ -122,24 +130,25 @@ describe( 'Site Kit dashboard post search', () => {
 		await expect( postSearcher ).toClick( '.autocomplete__option', {
 			text: /hello world/i,
 		} );
+
+		page.waitForNavigation();
+
+		await page.waitForSelector( '.googlesitekit-entity-search' );
+		const entitySearcher = await page.$( '.googlesitekit-entity-search' );
+
 		// Search input becomes the post title
 		expect(
-			await postSearcher.$eval( 'input', ( el ) => el.value )
+			await entitySearcher.$eval( 'input', ( el ) => el.value )
 		).toEqual( 'Hello world!' );
 
-		await Promise.all( [
-			page.waitForNavigation(),
-			expect( postSearcher ).toClick( 'button', { text: /view data/i } ),
-		] );
-
 		await expect( page ).toMatchElement(
-			'.googlesitekit-page-header__title',
+			'.googlesitekit-entity-header__back',
 			{
-				text: /detailed page stats/i,
+				text: /back to dashboard/i,
 			}
 		);
 		await expect( page ).toMatchElement(
-			'.googlesitekit-dashboard-single-url__title',
+			'.googlesitekit-entity-header__details p',
 			{
 				text: 'Hello world!',
 			}
@@ -147,11 +156,13 @@ describe( 'Site Kit dashboard post search', () => {
 	} );
 
 	it( 'displays "No results found" when searching by title if no post is found', async () => {
-		const postSearcher = await page.$( '.googlesitekit-post-searcher' );
+		const postSearcher = await page.$( '.googlesitekit-entity-search' );
+		await page.click( '.googlesitekit-entity-search .mdc-button' );
+		await page.waitForSelector( '.googlesitekit-entity-search__actions' );
 
 		await expect( postSearcher ).toFill( 'input', 'non-existent title' );
 		await page.waitForResponse( ( res ) =>
-			res.url().match( 'core/search/data/post-search' )
+			res.url().match( 'core/search/data/entity-search' )
 		);
 
 		await expect( postSearcher ).toMatchElement( '.autocomplete__option', {
@@ -165,14 +176,16 @@ describe( 'Site Kit dashboard post search', () => {
 	} );
 
 	it( 'displays "No results found" when searching by URL if no post is found', async () => {
-		const postSearcher = await page.$( '.googlesitekit-post-searcher' );
+		const postSearcher = await page.$( '.googlesitekit-entity-search' );
+		await page.click( '.googlesitekit-entity-search .mdc-button' );
+		await page.waitForSelector( '.googlesitekit-entity-search__actions' );
 
 		await expect( postSearcher ).toFill(
 			'input',
 			createURL( 'non-existent' )
 		);
 		await page.waitForResponse( ( res ) =>
-			res.url().match( 'core/search/data/post-search' )
+			res.url().match( 'core/search/data/entity-search' )
 		);
 
 		await expect( postSearcher ).toMatchElement( '.autocomplete__option', {
@@ -187,11 +200,13 @@ describe( 'Site Kit dashboard post search', () => {
 
 	it( 'works with post titles containing special characters', async () => {
 		const TITLE_SPECIAL_CHARACTERS = 'Hello Spéçïåł čhāràćtęrß!';
-		const postSearcher = await page.$( '.googlesitekit-post-searcher' );
+		const postSearcher = await page.$( '.googlesitekit-entity-search' );
+		await page.click( '.googlesitekit-entity-search .mdc-button' );
+		await page.waitForSelector( '.googlesitekit-entity-search__actions' );
 
 		await expect( postSearcher ).toFill( 'input', 'Spéçïåł' );
 		await page.waitForResponse( ( res ) =>
-			res.url().match( 'core/search/data/post-search' )
+			res.url().match( 'core/search/data/entity-search' )
 		);
 
 		// Ensure expected options appear.
@@ -207,24 +222,25 @@ describe( 'Site Kit dashboard post search', () => {
 		await expect( postSearcher ).toClick( '.autocomplete__option', {
 			text: TITLE_SPECIAL_CHARACTERS,
 		} );
+
+		await page.waitForNavigation();
+
+		await page.waitForSelector( '.googlesitekit-entity-search' );
+		const entitySearcher = await page.$( '.googlesitekit-entity-search' );
+
 		// Search input becomes the post title
 		expect(
-			await postSearcher.$eval( 'input', ( el ) => el.value )
+			await entitySearcher.$eval( 'input', ( el ) => el.value )
 		).toEqual( TITLE_SPECIAL_CHARACTERS );
 
-		await Promise.all( [
-			page.waitForNavigation(),
-			expect( postSearcher ).toClick( 'button', { text: /view data/i } ),
-		] );
-
 		await expect( page ).toMatchElement(
-			'.googlesitekit-page-header__title',
+			'.googlesitekit-entity-header__back',
 			{
-				text: /detailed page stats/i,
+				text: /back to dashboard/i,
 			}
 		);
 		await expect( page ).toMatchElement(
-			'.googlesitekit-dashboard-single-url__title',
+			'.googlesitekit-entity-header__details p',
 			{
 				text: TITLE_SPECIAL_CHARACTERS,
 			}

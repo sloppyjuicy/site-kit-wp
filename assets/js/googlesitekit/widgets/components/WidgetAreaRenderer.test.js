@@ -17,10 +17,16 @@
  */
 
 /**
+ * External dependencies
+ */
+import { getByText } from '@testing-library/dom';
+
+/**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import WidgetAreaRenderer from './WidgetAreaRenderer';
+import * as tracking from '../../../util/tracking';
 import {
 	CORE_WIDGETS,
 	WIDGET_WIDTHS,
@@ -30,11 +36,18 @@ import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
 import {
 	createTestRegistry,
 	render,
-	unsubscribeFromAll,
-	waitFor,
+	provideModules,
+	provideUserCapabilities,
+	muteFetch,
 } from '../../../../../tests/js/test-utils';
-
-const { useSelect } = Data;
+import {
+	VIEW_CONTEXT_MAIN_DASHBOARD,
+	VIEW_CONTEXT_MAIN_DASHBOARD_VIEW_ONLY,
+} from '../../constants';
+import {
+	PERMISSION_READ_SHARED_MODULE_DATA,
+	PERMISSION_VIEW_DASHBOARD,
+} from '../../datastore/user/constants';
 
 const createTestRegistryWithArea = (
 	areaName,
@@ -52,22 +65,27 @@ const createTestRegistryWithArea = (
 	return registry;
 };
 
-const WidgetComponent = () => {
+function WidgetComponent() {
 	const isConnected = useSelect( ( select ) =>
 		select( CORE_SITE ).isConnected()
 	);
 
 	return <div>Foo bar! Connected: { isConnected ? ' yes' : 'no' }.</div>;
-};
+}
 
-const WidgetComponentEmpty = ( { WidgetNull } ) => {
+function WidgetComponentEmpty( { WidgetNull } ) {
 	return <WidgetNull />;
-};
+}
+
+function WidgetComponentErrored() {
+	throw new Error( 'Site Kit error message.' );
+}
 
 const createWidgets = ( registry, areaName, widgets ) => {
-	widgets.forEach( ( { Component, slug, width } ) => {
+	widgets.forEach( ( { Component, modules, slug, width } ) => {
 		registry.dispatch( CORE_WIDGETS ).registerWidget( slug, {
 			Component,
+			modules,
 			width,
 		} );
 		registry.dispatch( CORE_WIDGETS ).assignWidget( slug, areaName );
@@ -80,12 +98,16 @@ describe( 'WidgetAreaRenderer', () => {
 
 	beforeEach( async () => {
 		registry = createTestRegistryWithArea( areaName );
+
+		provideModules( registry );
+
 		const connection = { connected: true };
 		await registry.dispatch( CORE_SITE ).receiveGetConnection( connection );
-	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
+		const fetchGetExpiredItems = new RegExp(
+			'^/google-site-kit/v1/core/user/data/expirable-items'
+		);
+		muteFetch( fetchGetExpiredItems );
 	} );
 
 	it( 'should return the same number of elements as widgets from a selector', async () => {
@@ -108,17 +130,122 @@ describe( 'WidgetAreaRenderer', () => {
 		] );
 
 		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<WidgetAreaRenderer slug={ areaName } />,
 			{ registry }
 		);
 
-		await waitFor( () => {
-			expect( widgets ).toHaveLength( 3 );
-			expect(
-				container.firstChild.querySelectorAll( '.googlesitekit-widget' )
-			).toHaveLength( 3 );
+		await waitForRegistry();
+
+		expect( widgets ).toHaveLength( 3 );
+		expect(
+			container.firstChild.querySelectorAll( '.googlesitekit-widget' )
+		).toHaveLength( 3 );
+	} );
+
+	it( 'should only render widgets the user has access to in a view-only viewContext', async () => {
+		createWidgets( registry, areaName, [
+			{
+				Component: WidgetComponent,
+				modules: 'search-console',
+				slug: 'one',
+				width: WIDGET_WIDTHS.FULL,
+			},
+			{
+				Component: WidgetComponent,
+				modules: 'search-console',
+				slug: 'two',
+				width: WIDGET_WIDTHS.FULL,
+			},
+			{
+				Component() {
+					return <div>AdSense is here</div>;
+				},
+				modules: 'adsense',
+				slug: 'three',
+				width: WIDGET_WIDTHS.FULL,
+			},
+		] );
+
+		// Make sure our test module is loaded so we can test for it appearing
+		// when the view-only dashboard is rendererd.
+		provideModules( registry, [ { slug: 'AdSense', name: 'AdSense' } ] );
+
+		// Allow the current user to view the Search Console module's data,
+		// but not AdSense's data.
+		provideUserCapabilities( registry, {
+			[ PERMISSION_VIEW_DASHBOARD ]: true,
+			[ `${ PERMISSION_READ_SHARED_MODULE_DATA }::["adsense"]` ]: false,
+			[ `${ PERMISSION_READ_SHARED_MODULE_DATA }::["search-console"]` ]: true,
 		} );
+
+		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
+		const { container, waitForRegistry } = render(
+			<WidgetAreaRenderer slug={ areaName } />,
+			{ registry, viewContext: VIEW_CONTEXT_MAIN_DASHBOARD_VIEW_ONLY }
+		);
+
+		await waitForRegistry();
+
+		// There should be three widgets registered in the datastore.
+		expect( widgets ).toHaveLength( 3 );
+
+		// Only two widgets should appear in the DOM, because we don't have
+		// access to the third, AdSense widget.
+		expect(
+			container.firstChild.querySelectorAll( '.googlesitekit-widget' )
+		).toHaveLength( 2 );
+
+		// Ensure the AdSense widget is not rendered.
+		expect( container.firstChild ).not.toHaveTextContent(
+			'AdSense is here'
+		);
+	} );
+
+	it( 'should render all widgets when not in a view-only viewContext', async () => {
+		createWidgets( registry, areaName, [
+			{
+				Component: WidgetComponent,
+				modules: 'search-console',
+				slug: 'one',
+				width: WIDGET_WIDTHS.FULL,
+			},
+			{
+				Component: WidgetComponent,
+				modules: 'search-console',
+				slug: 'two',
+				width: WIDGET_WIDTHS.FULL,
+			},
+			{
+				Component() {
+					return <div>AdSense is here</div>;
+				},
+				modules: 'adsense',
+				slug: 'three',
+				width: WIDGET_WIDTHS.FULL,
+			},
+		] );
+
+		// Add our dashboard sharing capabilities into state.
+		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
+		const { container, waitForRegistry } = render(
+			<WidgetAreaRenderer slug={ areaName } />,
+			{ registry, viewContext: VIEW_CONTEXT_MAIN_DASHBOARD }
+		);
+
+		await waitForRegistry();
+
+		// There should be three widgets registered in the datastore.
+		expect( widgets ).toHaveLength( 3 );
+
+		// All widgets should appear in the DOM because we aren't in a view-only
+		// viewContext.
+		expect(
+			container.firstChild.querySelectorAll( '.googlesitekit-widget' )
+		).toHaveLength( 3 );
+
+		// Ensure the AdSense widget is rendered.
+		expect( container.firstChild ).toHaveTextContent( 'AdSense is here' );
 	} );
 
 	it( 'should treat widgets that render no content as zero-width (ignoring them)', async () => {
@@ -140,18 +267,18 @@ describe( 'WidgetAreaRenderer', () => {
 			},
 		] );
 
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<WidgetAreaRenderer slug={ areaName } />,
 			{ registry }
 		);
 
-		await waitFor( () => {
-			expect(
-				container.firstChild.querySelectorAll(
-					'.googlesitekit-widget-area-widgets'
-				)[ 0 ]
-			).toMatchSnapshot();
-		} );
+		await waitForRegistry();
+
+		expect(
+			container.firstChild.querySelectorAll(
+				'.googlesitekit-widget-area-widgets'
+			)[ 0 ]
+		).toMatchSnapshot();
 	} );
 
 	it.each( [
@@ -300,17 +427,18 @@ describe( 'WidgetAreaRenderer', () => {
 		async ( testName, widgets ) => {
 			createWidgets( registry, areaName, widgets );
 
-			const { container } = render(
+			const { container, waitForRegistry } = render(
 				<WidgetAreaRenderer slug={ areaName } />,
 				{ registry }
 			);
-			await waitFor( () => {
-				expect(
-					container.firstChild.querySelectorAll(
-						'.googlesitekit-widget-area-widgets'
-					)[ 0 ]
-				).toMatchSnapshot();
-			} );
+
+			await waitForRegistry();
+
+			expect(
+				container.firstChild.querySelectorAll(
+					'.googlesitekit-widget-area-widgets'
+				)[ 0 ]
+			).toMatchSnapshot();
 		}
 	);
 
@@ -370,17 +498,18 @@ describe( 'WidgetAreaRenderer', () => {
 		async ( testName, widgets ) => {
 			createWidgets( registry, areaName, widgets );
 
-			const { container } = render(
+			const { container, waitForRegistry } = render(
 				<WidgetAreaRenderer slug={ areaName } />,
 				{ registry }
 			);
-			await waitFor( () => {
-				expect(
-					container.firstChild.querySelectorAll(
-						'.googlesitekit-widget-area-widgets'
-					)[ 0 ]
-				).toMatchSnapshot();
-			} );
+
+			await waitForRegistry();
+
+			expect(
+				container.firstChild.querySelectorAll(
+					'.googlesitekit-widget-area-widgets'
+				)[ 0 ]
+			).toMatchSnapshot();
 		}
 	);
 
@@ -470,17 +599,18 @@ describe( 'WidgetAreaRenderer', () => {
 		async ( testName, widgets ) => {
 			createWidgets( registry, areaName, widgets );
 
-			const { container } = render(
+			const { container, waitForRegistry } = render(
 				<WidgetAreaRenderer slug={ areaName } />,
 				{ registry }
 			);
-			await waitFor( () => {
-				expect(
-					container.firstChild.querySelectorAll(
-						'.googlesitekit-widget-area-widgets'
-					)[ 0 ]
-				).toMatchSnapshot();
-			} );
+
+			await waitForRegistry();
+
+			expect(
+				container.firstChild.querySelectorAll(
+					'.googlesitekit-widget-area-widgets'
+				)[ 0 ]
+			).toMatchSnapshot();
 		}
 	);
 
@@ -503,20 +633,21 @@ describe( 'WidgetAreaRenderer', () => {
 			},
 		] );
 
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<WidgetAreaRenderer
 				slug={ areaName }
 				style={ WIDGET_AREA_STYLES.BOXES }
 			/>,
 			{ registry }
 		);
-		await waitFor( () => {
-			expect(
-				container.firstChild.querySelectorAll(
-					'.googlesitekit-widget-area-widgets > .mdc-layout-grid__inner > .mdc-layout-grid__cell.mdc-layout-grid__cell--span-12 > .mdc-layout-grid > .mdc-layout-grid__inner'
-				)
-			).toHaveLength( 0 );
-		} );
+
+		await waitForRegistry();
+
+		expect(
+			container.firstChild.querySelectorAll(
+				'.googlesitekit-widget-area-widgets > .mdc-layout-grid__inner > .mdc-layout-grid__cell.mdc-layout-grid__cell--span-12 > .mdc-layout-grid > .mdc-layout-grid__inner'
+			)
+		).toHaveLength( 0 );
 	} );
 
 	it( 'should output composite style with extra grid markup', async () => {
@@ -524,6 +655,9 @@ describe( 'WidgetAreaRenderer', () => {
 			areaName,
 			WIDGET_AREA_STYLES.COMPOSITE
 		);
+
+		provideModules( registry );
+
 		registry
 			.dispatch( CORE_SITE )
 			.receiveGetConnection( { connected: true } );
@@ -545,17 +679,18 @@ describe( 'WidgetAreaRenderer', () => {
 			},
 		] );
 
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<WidgetAreaRenderer slug={ areaName } />,
 			{ registry }
 		);
-		await waitFor( () => {
-			expect(
-				container.firstChild.querySelectorAll(
-					'.googlesitekit-widget-area-widgets > .mdc-layout-grid__inner > .mdc-layout-grid__cell.mdc-layout-grid__cell--span-12 > .mdc-layout-grid > .mdc-layout-grid__inner'
-				)
-			).toHaveLength( 1 );
-		} );
+
+		await waitForRegistry();
+
+		expect(
+			container.firstChild.querySelectorAll(
+				'.googlesitekit-widget-area-widgets > .mdc-layout-grid__inner > .mdc-layout-grid__cell.mdc-layout-grid__cell--span-12 > .mdc-layout-grid > .mdc-layout-grid__inner'
+			)
+		).toHaveLength( 1 );
 	} );
 
 	it( 'should render a hidden widget area when it has no active widget', async () => {
@@ -568,23 +703,23 @@ describe( 'WidgetAreaRenderer', () => {
 		] );
 
 		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<WidgetAreaRenderer slug={ areaName } />,
 			{ registry }
 		);
 
-		await waitFor( () => {
-			expect( widgets ).toHaveLength( 1 );
-			expect(
-				container.querySelectorAll( '.googlesitekit-widget-area' )
-			).toHaveLength( 1 );
-			expect(
-				container.querySelector( '.googlesitekit-widget-area' )
-			).toHaveClass( 'googlesitekit-hidden' );
-		} );
+		await waitForRegistry();
+
+		expect( widgets ).toHaveLength( 1 );
+		expect(
+			container.querySelectorAll( '.googlesitekit-widget-area' )
+		).toMatchSnapshot();
+		expect(
+			container.querySelector( '.googlesitekit-widget-area' )
+		).toHaveClass( 'googlesitekit-hidden' );
 	} );
 
-	it( 'should not render the widget area title, subtitle and icon if there is only widget area', async () => {
+	it( 'should render the widget area title, subtitle and icon', async () => {
 		createWidgets( registry, areaName, [
 			{
 				Component: WidgetComponent,
@@ -594,43 +729,184 @@ describe( 'WidgetAreaRenderer', () => {
 		] );
 
 		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
-		const { container } = render(
-			<WidgetAreaRenderer slug={ areaName } totalAreas={ 1 } />,
+		const { container, waitForRegistry } = render(
+			<WidgetAreaRenderer slug={ areaName } />,
 			{ registry }
 		);
 
-		await waitFor( () => {
-			expect( widgets ).toHaveLength( 1 );
-			expect(
-				container.firstChild.querySelectorAll(
-					'.googlesitekit-widget-area-header'
-				)
-			).toHaveLength( 0 );
-		} );
+		await waitForRegistry();
+
+		expect( widgets ).toHaveLength( 1 );
+		expect(
+			container.firstChild.querySelectorAll(
+				'.googlesitekit-widget-area-header'
+			)
+		).toHaveLength( 1 );
 	} );
 
-	it( 'should render the widget area title, subtitle and icon if there is more than widget area', async () => {
+	it( 'should combine multiple widgets in RecoverableModules state with the same metadata into a single widget', async () => {
+		provideModules( registry, [
+			{
+				slug: 'search-console',
+				recoverable: true,
+			},
+		] );
+
+		provideUserCapabilities( registry, {
+			[ PERMISSION_VIEW_DASHBOARD ]: true,
+			[ `${ PERMISSION_READ_SHARED_MODULE_DATA }::["search-console"]` ]: true,
+		} );
+
 		createWidgets( registry, areaName, [
 			{
 				Component: WidgetComponent,
 				slug: 'one',
-				width: WIDGET_WIDTHS.FULL,
+				modules: [ 'search-console' ],
+			},
+			{
+				Component: WidgetComponent,
+				slug: 'two',
+				modules: [ 'search-console' ],
 			},
 		] );
 
-		const widgets = registry.select( CORE_WIDGETS ).getWidgets( areaName );
-		const { container } = render(
-			<WidgetAreaRenderer slug={ areaName } totalAreas={ 3 } />,
-			{ registry }
+		const { container, waitForRegistry } = render(
+			<WidgetAreaRenderer slug={ areaName } />,
+			{
+				registry,
+				viewContext: VIEW_CONTEXT_MAIN_DASHBOARD_VIEW_ONLY,
+			}
 		);
 
-		await waitFor( () => {
-			expect( widgets ).toHaveLength( 1 );
+		await waitForRegistry();
+
+		const visibleWidgetSelector =
+			'.googlesitekit-widget-area-widgets > .mdc-layout-grid__inner > .mdc-layout-grid__cell > .googlesitekit-widget';
+
+		// There should be a single visible widget.
+		expect(
+			container.firstChild.querySelectorAll( visibleWidgetSelector )
+		).toHaveLength( 1 );
+
+		// The visible widget should be rendered as the RecoverableModules component.
+		expect(
+			getByText(
+				container.firstChild.querySelector( visibleWidgetSelector ),
+				'Search Console data was previously shared by an admin who no longer has access. Please contact another admin to restore it.'
+			)
+		).toBeInTheDocument();
+
+		// There should also be a hidden widget.
+		expect(
+			container.firstChild.querySelectorAll(
+				'.googlesitekit-widget-area-widgets .googlesitekit-hidden .googlesitekit-widget'
+			)
+		).toHaveLength( 1 );
+
+		expect(
+			container.firstChild.querySelector(
+				'.googlesitekit-widget-area-widgets'
+			)
+		).toMatchSnapshot();
+	} );
+
+	describe( 'Error handling', () => {
+		const mockTrackEvent = jest.spyOn( tracking, 'trackEvent' );
+		mockTrackEvent.mockImplementation( () => Promise.resolve() );
+
+		it( 'should display the error using `WidgetErrorHandler` component within a widget', async () => {
+			createWidgets( registry, areaName, [
+				{
+					Component: WidgetComponentErrored,
+					modules: 'search-console',
+					slug: 'one',
+					width: WIDGET_WIDTHS.FULL,
+				},
+			] );
+
+			const { container, waitForRegistry } = render(
+				<WidgetAreaRenderer slug={ areaName } />,
+				{ registry, viewContext: VIEW_CONTEXT_MAIN_DASHBOARD }
+			);
+
+			await waitForRegistry();
+
+			expect( container.firstChild ).toHaveTextContent(
+				'Error in Widget'
+			);
+			expect( container.firstChild ).toHaveTextContent(
+				'An error prevented this Widget'
+			);
+
+			expect( console ).toHaveErrored();
+		} );
+
+		it( 'should display other widgets when there is error in one of the widgets', async () => {
+			createWidgets( registry, areaName, [
+				{
+					Component: WidgetComponent,
+					modules: 'search-console',
+					slug: 'one',
+					width: WIDGET_WIDTHS.FULL,
+				},
+				{
+					Component: WidgetComponentErrored,
+					modules: 'search-console',
+					slug: 'two',
+					width: WIDGET_WIDTHS.FULL,
+				},
+				{
+					Component() {
+						return <div>AdSense is here</div>;
+					},
+					modules: 'adsense',
+					slug: 'three',
+					width: WIDGET_WIDTHS.FULL,
+				},
+			] );
+
+			const { container, waitForRegistry } = render(
+				<WidgetAreaRenderer slug={ areaName } />,
+				{ registry, viewContext: VIEW_CONTEXT_MAIN_DASHBOARD }
+			);
+
+			await waitForRegistry();
+
+			expect( container.firstChild ).toHaveTextContent(
+				'Error in Widget'
+			);
+
 			expect(
-				container.firstChild.querySelectorAll(
-					'.googlesitekit-widget-area-header'
-				)
-			).toHaveLength( 1 );
+				container.firstChild.querySelectorAll( '.googlesitekit-widget' )
+			).toHaveLength( 2 );
+
+			expect( container.firstChild ).toHaveTextContent(
+				'AdSense is here'
+			);
+
+			expect( console ).toHaveErrored();
+		} );
+
+		it( 'should track the error event', async () => {
+			createWidgets( registry, areaName, [
+				{
+					Component: WidgetComponentErrored,
+					modules: 'search-console',
+					slug: 'one',
+					width: WIDGET_WIDTHS.FULL,
+				},
+			] );
+
+			const { waitForRegistry } = render(
+				<WidgetAreaRenderer slug={ areaName } />,
+				{ registry, viewContext: VIEW_CONTEXT_MAIN_DASHBOARD }
+			);
+
+			await waitForRegistry();
+
+			expect( mockTrackEvent ).toHaveBeenCalled();
+
+			expect( console ).toHaveErrored();
 		} );
 	} );
 } );

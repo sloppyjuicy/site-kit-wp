@@ -37,18 +37,31 @@ function directories( relativePath ) {
 function getComponentNames( componentPath ) {
 	return fs
 		.readdirSync( componentPath )
-		.filter( ( name ) => ! /^index|\.(stories|test)\.js$/.test( name ) )
+		.filter(
+			( name ) =>
+				! /^index|utils|__snapshots__|\.(stories|test)\.js$/.test(
+					name
+				)
+		)
 		.map( ( name ) => name.replace( /\..*/, '' ) );
 }
 
 describe( 'all modules', () => {
 	describe.each( directories( '.' ) )( '%s', ( moduleSlug ) => {
 		const components = directories( `${ moduleSlug }/components` );
-		if ( ! components.length ) {
+
+		// Filter out the directories that don't have an index.js file.
+		const filteredComponents = components.filter(
+			( component ) =>
+				component !== 'audience-segmentation' &&
+				component !== 'custom-dimensions-report-options'
+		);
+
+		if ( ! filteredComponents.length ) {
 			return;
 		}
 
-		it.each( components )(
+		it.each( filteredComponents )(
 			'components/%s has an index module with all components exported',
 			( componentDir ) => {
 				const componentDirPath = path.join(
@@ -57,17 +70,23 @@ describe( 'all modules', () => {
 					'components',
 					componentDir
 				);
+
 				const {
 					// eslint-disable-next-line no-unused-vars
 					default: _,
 					...indexExports
 				} = require( `${ componentDirPath }/index.js` );
 				const indexExportNames = Object.keys( indexExports ).sort();
-				const componentNames = getComponentNames(
-					componentDirPath
-				).sort();
 
-				expect( indexExportNames ).toEqual( componentNames );
+				const componentNames =
+					getComponentNames( componentDirPath ).sort();
+
+				const filteredComponentNames = componentNames.filter(
+					( component ) =>
+						component !== 'custom-dimensions-report-options'
+				);
+
+				expect( indexExportNames ).toEqual( filteredComponentNames );
 			}
 		);
 	} );

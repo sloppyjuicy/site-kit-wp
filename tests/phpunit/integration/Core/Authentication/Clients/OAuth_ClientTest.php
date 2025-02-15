@@ -14,17 +14,19 @@ use Google\Site_Kit\Context;
 use Google\Site_Kit\Core\Authentication\Clients\OAuth_Client;
 use Google\Site_Kit\Core\Authentication\Owner_ID;
 use Google\Site_Kit\Core\Authentication\Profile;
+use Google\Site_Kit\Core\Dashboard_Sharing\Activity_Metrics\Activity_Metrics;
+use Google\Site_Kit\Core\Dashboard_Sharing\Activity_Metrics\Active_Consumers;
 use Google\Site_Kit\Tests\Exception\RedirectException;
 use Google\Site_Kit\Core\Permissions\Permissions;
 use Google\Site_Kit\Core\Storage\Options;
 use Google\Site_Kit\Core\Storage\User_Options;
-use Google\Site_Kit\Tests\FakeHttpClient;
 use Google\Site_Kit\Tests\Fake_Site_Connection_Trait;
+use Google\Site_Kit\Tests\FakeHttp;
 use Google\Site_Kit\Tests\MutableInput;
 use Google\Site_Kit\Tests\TestCase;
-use Google\Site_Kit_Dependencies\GuzzleHttp\Message\Request;
-use Google\Site_Kit_Dependencies\GuzzleHttp\Message\Response;
-use Google\Site_Kit_Dependencies\GuzzleHttp\Stream\Stream;
+use Google\Site_Kit_Dependencies\GuzzleHttp\Psr7\Query;
+use Google\Site_Kit_Dependencies\GuzzleHttp\Psr7\Request;
+use Google\Site_Kit_Dependencies\GuzzleHttp\Psr7\Response;
 
 /**
  * @group Authentication
@@ -36,7 +38,20 @@ class OAuth_ClientTest extends TestCase {
 		$this->fake_site_connection();
 		$user_id = $this->factory()->user->create();
 		wp_set_current_user( $user_id );
-		$client = new OAuth_Client( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+
+		$context          = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		$client           = new OAuth_Client( $context );
+		$user_options     = new User_Options( $context );
+		$activity_metrics = new Activity_Metrics( $context, $user_options );
+		$active_consumers = new Active_Consumers( $user_options );
+
+		$activity_metrics->register();
+		$active_consumers->set(
+			array(
+				1 => array( 'editor', 'author' ),
+				2 => array( 'contributor', 'editor' ),
+			)
+		);
 
 		// Make sure we're starting with a clean slate
 		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
@@ -45,6 +60,15 @@ class OAuth_ClientTest extends TestCase {
 
 		// Make sure we're getting the expected error
 		$this->assertEquals( 'refresh_token_not_exist', get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
+
+		// Verify that the active consumers meta was not deleted.
+		$this->assertEquals(
+			array(
+				1 => array( 'editor', 'author' ),
+				2 => array( 'contributor', 'editor' ),
+			),
+			$active_consumers->get()
+		);
 
 		$this->assertTrue(
 			$client->set_token(
@@ -55,19 +79,46 @@ class OAuth_ClientTest extends TestCase {
 			)
 		);
 
+		delete_user_option( $user_id, OAuth_Client::OPTION_ERROR_CODE );
+
+		// Set the request handler to return a response with a new access token.
+		FakeHttp::fake_google_http_handler(
+			$client->get_client(),
+			function ( Request $request ) use ( $activity_metrics ) {
+				if ( 0 !== strpos( $request->getUri(), 'https://oauth2.googleapis.com/token' ) ) {
+					return new Response( 200 );
+				}
+
+				$body = Query::parse( $request->getBody() );
+
+				// Ensure the token refresh request contains the set of active consumers.
+				if ( $activity_metrics->get_for_refresh_token()['active_consumers'] !== $body['active_consumers'] ) {
+					return new Response( 200 );
+				}
+
+				return new Response(
+					200,
+					array(),
+					json_encode(
+						array(
+							'access_token' => 'new-test-access-token',
+							'expires_in'   => 3599,
+							'token_type'   => 'Bearer',
+						)
+					)
+				);
+			}
+		);
+
 		$client->refresh_token();
 
-		// If the request completely fails (cURL error), ignore that.
-		$http_error = (string) get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id );
-		if ( 0 !== strpos( $http_error, 'cURL error' ) ) {
-			$this->assertEquals( 'refresh_token_not_exist', get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
-		}
+		$this->assertEmpty( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
 
-		$client->get_client()->setHttpClient( new FakeHttpClient() );
-		$client->refresh_token();
+		// Verify that the active consumers meta was deleted.
+		$this->assertEmpty( $active_consumers->get() );
 
-		// There is no actual response, so attempting to decode JSON fails.
-		$this->assertEquals( 'Invalid JSON response', get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
+		// Make sure the access token was updated for the user.
+		$this->assertEquals( 'new-test-access-token', $client->get_access_token() );
 	}
 
 	public function test_revoke_token() {
@@ -268,26 +319,30 @@ class OAuth_ClientTest extends TestCase {
 		 * Requires credentials for redirect_uri to be set on the Google_Site_Kit_Client.
 		 * @see \Google\Site_Kit\Core\Authentication\Clients\OAuth_Client::get_client
 		 */
-		$fake_credentials = $this->fake_site_connection();
-		$user_id          = $this->factory()->user->create();
+		list( $client_id ) = $this->fake_site_connection();
+		$user_id           = $this->factory()->user->create();
 		wp_set_current_user( $user_id );
-		$client = new OAuth_Client( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
+		$user_options = new User_Options( $context );
+		$client       = new OAuth_Client( $context, null, $user_options );
 
-		$base_scopes        = $client->get_required_scopes();
-		$post_auth_redirect = 'http://example.com/test/redirect/url';
-		$authentication_url = $client->get_authentication_url( $post_auth_redirect );
-		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/auth?', $authentication_url );
+		$base_scopes              = $client->get_required_scopes();
+		$post_auth_redirect       = 'http://example.com/test/redirect/url';
+		$post_auth_error_redirect = 'http://example.com/test/redirect/error/url';
+		$authentication_url       = $client->get_authentication_url( $post_auth_redirect, $post_auth_error_redirect );
+		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/v2/auth?', $authentication_url );
 		wp_parse_str( parse_url( $authentication_url, PHP_URL_QUERY ), $params );
 
 		// Verify that the user locale is included in the URL.
-		$this->assertStringEndsWith( '&hl=en_US', $authentication_url );
+		$this->assertArrayHasKey( 'hl', $params );
+		$this->assertEquals( 'en_US', $params['hl'] );
 
 		/**
 		 * The redirect URL passed to get_authentication_url is used locally, and the redirect URI here is always the same.
 		 * @see \Google\Site_Kit\Core\Authentication\Authentication::handle_oauth
 		 */
 		$this->assertEquals( add_query_arg( 'oauth2callback', 1, admin_url( 'index.php' ) ), $params['redirect_uri'] );
-		$this->assertEquals( $fake_credentials['client_id'], $params['client_id'] );
+		$this->assertEquals( $client_id, $params['client_id'] );
 		$this->assertEqualSets(
 			explode( ' ', $params['scope'] ),
 			$base_scopes
@@ -296,8 +351,8 @@ class OAuth_ClientTest extends TestCase {
 		// Does not include any saved additional scopes.
 		$saved_extra_scopes = array( 'http://example.com/saved/extra-scope' );
 		update_user_option( $user_id, OAuth_Client::OPTION_ADDITIONAL_AUTH_SCOPES, $saved_extra_scopes );
-		$authentication_url = $client->get_authentication_url( $post_auth_redirect );
-		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/auth?', $authentication_url );
+		$authentication_url = $client->get_authentication_url( $post_auth_redirect, $post_auth_error_redirect );
+		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/v2/auth?', $authentication_url );
 		wp_parse_str( parse_url( $authentication_url, PHP_URL_QUERY ), $params );
 		$this->assertEqualSets(
 			explode( ' ', $params['scope'] ),
@@ -309,13 +364,19 @@ class OAuth_ClientTest extends TestCase {
 			'http://example.com/foo/bar',
 			'http://example.com/bar/baz',
 		);
-		$authentication_url = $client->get_authentication_url( $post_auth_redirect, $extra_scopes );
-		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/auth?', $authentication_url );
+		$authentication_url = $client->get_authentication_url( $post_auth_redirect, $post_auth_error_redirect, $extra_scopes );
+		$this->assertStringStartsWith( 'https://accounts.google.com/o/oauth2/v2/auth?', $authentication_url );
 		wp_parse_str( parse_url( $authentication_url, PHP_URL_QUERY ), $params );
 		$this->assertEqualSets(
 			explode( ' ', $params['scope'] ),
 			array_merge( $base_scopes, $extra_scopes )
 		);
+
+		// Verify the notification query parameter has been added to the redirect URL.
+		$this->assertEquals( add_query_arg( 'notification', 'authentication_success', $post_auth_redirect ), $user_options->get( OAuth_Client::OPTION_REDIRECT_URL ) );
+
+		// Verify the error redirect is saved.
+		$this->assertEquals( $post_auth_error_redirect, $user_options->get( OAuth_Client::OPTION_ERROR_REDIRECT_URL ) );
 	}
 
 	public function test_get_authentication_url__with_additional_scopes() {
@@ -330,7 +391,7 @@ class OAuth_ClientTest extends TestCase {
 			'https://example.com/test/scope/c',
 		);
 
-		$authentication_url = $client->get_authentication_url( '', $additional_scopes );
+		$authentication_url = $client->get_authentication_url( '', '', $additional_scopes );
 
 		wp_parse_str( parse_url( $authentication_url, PHP_URL_QUERY ), $params );
 		$requested_scopes = explode( ' ', $params['scope'] );
@@ -342,6 +403,22 @@ class OAuth_ClientTest extends TestCase {
 		$this->assertContains( 'http', $requested_scopes );
 		$this->assertContains( 'example.com/test/scope/a', $requested_scopes );
 		$this->assertContains( 'https://example.com/test/scope/c', $requested_scopes );
+	}
+
+	public function test_get_authentication_url__with_notification() {
+		$user_id = $this->factory()->user->create();
+		wp_set_current_user( $user_id );
+		$this->fake_site_connection();
+		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
+		$user_options = new User_Options( $context );
+		$client       = new OAuth_Client( $context, null, $user_options );
+
+		// Pass in a redirect URL with a notification query parameter.
+		$post_auth_redirect = 'http://example.com/test/redirect/url?notification=some_notification_value';
+		$client->get_authentication_url( $post_auth_redirect );
+
+		// Verify the redirect URL is preserved, including the original notification query parameter.
+		$this->assertEquals( $post_auth_redirect, $user_options->get( OAuth_Client::OPTION_REDIRECT_URL ) );
 	}
 
 	public function test_authorize_user() {
@@ -359,7 +436,7 @@ class OAuth_ClientTest extends TestCase {
 			$client->authorize_user();
 		} catch ( RedirectException $redirect ) {
 			$this->assertEquals( 'callback_error', $user_options->get( OAuth_Client::OPTION_ERROR_CODE ) );
-			$this->assertEquals( admin_url(), $redirect->get_location() );
+			$this->assertEquals( admin_url( 'admin.php?page=googlesitekit-splash' ), $redirect->get_location() );
 		}
 
 		// If no credentials.
@@ -370,7 +447,7 @@ class OAuth_ClientTest extends TestCase {
 		try {
 			$client->authorize_user();
 		} catch ( RedirectException $redirect ) {
-			$this->assertEquals( admin_url(), $redirect->get_location() );
+			$this->assertEquals( admin_url( 'admin.php?page=googlesitekit-splash' ), $redirect->get_location() );
 		}
 
 		$this->assertEquals( 'oauth_credentials_not_exist', get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
@@ -383,10 +460,11 @@ class OAuth_ClientTest extends TestCase {
 		// No other way around this but to mock the Google_Site_Kit_Client
 		$google_client_mock = $this->getMockBuilder( 'Google\Site_Kit\Core\Authentication\Clients\Google_Site_Kit_Client' )
 			->setMethods( array( 'fetchAccessTokenWithAuthCode' ) )->getMock();
-		$http_client        = new FakeHttpClient();
-		$http_client->set_request_handler(
+
+		FakeHttp::fake_google_http_handler(
+			$google_client_mock,
 			function ( Request $request ) {
-				$url = parse_url( $request->getUrl() );
+				$url = parse_url( $request->getUri() );
 				if ( 'people.googleapis.com' !== $url['host'] || '/v1/people/me' !== $url['path'] ) {
 					return new Response( 200 );
 				}
@@ -394,22 +472,23 @@ class OAuth_ClientTest extends TestCase {
 				return new Response(
 					200,
 					array(),
-					Stream::factory(
-						json_encode(
-							array(
-								'emailAddresses' => array(
-									array( 'value' => 'fresh@foo.com' ),
-								),
-								'photos'         => array(
-									array( 'url' => 'https://example.com/fresh.jpg' ),
-								),
-							)
+					json_encode(
+						array(
+							'emailAddresses' => array(
+								array( 'value' => 'fresh@foo.com' ),
+							),
+							'photos'         => array(
+								array( 'url' => 'https://example.com/fresh.jpg' ),
+							),
+							'names'          => array(
+								array( 'displayName' => 'Dr Funkenstein' ),
+							),
 						)
 					)
 				);
 			}
 		);
-		$google_client_mock->setHttpClient( $http_client );
+
 		$google_client_mock->method( 'fetchAccessTokenWithAuthCode' )->willReturn( array( 'access_token' => 'test-access-token' ) );
 		$this->force_set_property( $client, 'google_client', $google_client_mock );
 
@@ -417,14 +496,72 @@ class OAuth_ClientTest extends TestCase {
 
 		try {
 			$client->authorize_user();
+			$this->fail( 'Expected to throw a RedirectException!' );
 		} catch ( RedirectException $redirect ) {
 			$this->assertStringStartsWith( "$success_redirect?", $redirect->get_location() );
-			$this->assertContains( 'notification=authentication_success', $redirect->get_location() );
+			$this->assertStringContainsString( 'notification=authentication_success', $redirect->get_location() );
 		}
 
 		$profile = $user_options->get( Profile::OPTION );
 		$this->assertEquals( 'fresh@foo.com', $profile['email'] );
 		$this->assertEquals( 'https://example.com/fresh.jpg', $profile['photo'] );
+		$this->assertEquals( 'Dr Funkenstein', $profile['full_name'] );
+	}
+
+	public function test_authorize_user__with_redirect_url_notification() {
+		$user_id = $this->factory()->user->create();
+		wp_set_current_user( $user_id );
+		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
+		$user_options = new User_Options( $context );
+		$client       = new OAuth_Client( $context, null, $user_options );
+		$this->fake_site_connection();
+
+		// Add a notification query parameter to the redirect URL.
+		$success_redirect = add_query_arg( 'notification', 'some_notification_value', admin_url( 'success-redirect' ) );
+
+		$client->get_authentication_url( $success_redirect );
+		// No other way around this but to mock the Google_Site_Kit_Client
+		$google_client_mock = $this->getMockBuilder( 'Google\Site_Kit\Core\Authentication\Clients\Google_Site_Kit_Client' )
+			->setMethods( array( 'fetchAccessTokenWithAuthCode' ) )->getMock();
+
+		FakeHttp::fake_google_http_handler(
+			$google_client_mock,
+			function ( Request $request ) {
+				$url = parse_url( $request->getUri() );
+				if ( 'people.googleapis.com' !== $url['host'] || '/v1/people/me' !== $url['path'] ) {
+					return new Response( 200 );
+				}
+
+				return new Response(
+					200,
+					array(),
+					json_encode(
+						array(
+							'emailAddresses' => array(
+								array( 'value' => 'fresh@foo.com' ),
+							),
+							'photos'         => array(
+								array( 'url' => 'https://example.com/fresh.jpg' ),
+							),
+							'names'          => array(
+								array( 'displayName' => 'Dr Funkenstein' ),
+							),
+						)
+					)
+				);
+			}
+		);
+
+		$google_client_mock->method( 'fetchAccessTokenWithAuthCode' )->willReturn( array( 'access_token' => 'test-access-token' ) );
+		$this->force_set_property( $client, 'google_client', $google_client_mock );
+
+		try {
+			$client->authorize_user();
+			$this->fail( 'Expected to throw a RedirectException!' );
+		} catch ( RedirectException $redirect ) {
+			// Verify the redirect URL is preserved, including the original notification query parameter.
+			$this->assertEquals( $success_redirect, $redirect->get_location() );
+		}
 	}
 
 	public function test_should_update_owner_id() {
@@ -444,8 +581,8 @@ class OAuth_ClientTest extends TestCase {
 			return $method->invoke( $client, $args );
 		};
 
-		$map_meta_cap = function( $user_id ) {
-			return function( $caps, $cap, $uid ) use ( $user_id ) {
+		$map_meta_cap = function ( $user_id ) {
+			return function ( $caps, $cap, $uid ) use ( $user_id ) {
 				if ( Permissions::MANAGE_OPTIONS === $cap && $uid === $user_id ) {
 					return array( 'manage_options' );
 				}
@@ -484,10 +621,16 @@ class OAuth_ClientTest extends TestCase {
 		// No other way around this but to mock the Google_Site_Kit_Client
 		$google_client_mock = $this->getMockBuilder( 'Google\Site_Kit\Core\Authentication\Clients\Google_Site_Kit_Client' )
 								->setMethods( array( 'fetchAccessTokenWithAuthCode' ) )->getMock();
-		$http_client        = new FakeHttpClient();
-		$http_client->set_request_handler(
+		// Deferred request execution is false by default.
+		$this->assertFalse( $google_client_mock->shouldDefer() );
+		// This ensures that the defer is disabled in the method under test. (See #7356)
+		// If not handled properly, the caller will not expect the response to be a Request and it will error.
+		$google_client_mock->setDefer( true );
+
+		FakeHttp::fake_google_http_handler(
+			$google_client_mock,
 			function ( Request $request ) {
-				$url = parse_url( $request->getUrl() );
+				$url = parse_url( $request->getUri() );
 				if ( 'people.googleapis.com' !== $url['host'] || '/v1/people/me' !== $url['path'] ) {
 					return new Response( 200 );
 				}
@@ -495,7 +638,7 @@ class OAuth_ClientTest extends TestCase {
 				return new Response( 500 );
 			}
 		);
-		$google_client_mock->setHttpClient( $http_client );
+
 		$google_client_mock->method( 'fetchAccessTokenWithAuthCode' )->willReturn( array( 'access_token' => 'test-access-token' ) );
 		$this->force_set_property( $client, 'google_client', $google_client_mock );
 
@@ -521,30 +664,34 @@ class OAuth_ClientTest extends TestCase {
 			$current_time,
 			wp_next_scheduled( OAuth_Client::CRON_REFRESH_PROFILE_DATA, array( $user_id_b ) )
 		);
-		$http_client->set_request_handler(
+
+		FakeHttp::fake_google_http_handler(
+			$google_client_mock,
 			function ( Request $request ) {
-				$url = parse_url( $request->getUrl() );
+				$url = parse_url( $request->getUri() );
 				if ( 'people.googleapis.com' !== $url['host'] || '/v1/people/me' !== $url['path'] ) {
 					return new Response( 200 );
 				}
 				return new Response(
 					200,
 					array(),
-					Stream::factory(
-						json_encode(
-							array(
-								'emailAddresses' => array(
-									array( 'value' => 'fresh@foo.com' ),
-								),
-								'photos'         => array(
-									array( 'url' => 'https://example.com/fresh.jpg' ),
-								),
-							)
+					json_encode(
+						array(
+							'emailAddresses' => array(
+								array( 'value' => 'fresh@foo.com' ),
+							),
+							'photos'         => array(
+								array( 'url' => 'https://example.com/fresh.jpg' ),
+							),
+							'names'          => array(
+								array( 'displayName' => 'Dr Funkenstein' ),
+							),
 						)
 					)
 				);
 			}
 		);
+
 		// Call refresh again for the second user, which will succeed.
 		$client->refresh_profile_data( MINUTE_IN_SECONDS );
 		// The scheduled event for the second user should now be cleared.
@@ -557,63 +704,9 @@ class OAuth_ClientTest extends TestCase {
 			$current_time,
 			wp_next_scheduled( OAuth_Client::CRON_REFRESH_PROFILE_DATA, array( $user_id_a ) )
 		);
-	}
 
-	public function test_using_proxy() {
-		$this->setExpectedDeprecated( OAuth_Client::class . '::using_proxy' );
-		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
-		$client  = new OAuth_Client( $context );
-
-		// Use proxy by default.
-		$this->assertTrue( $client->using_proxy() );
-
-		// Don't use proxy when regular OAuth client ID is used.
-		$this->fake_site_connection();
-		$this->assertFalse( $client->using_proxy() );
-
-		// Use proxy when proxy site ID is used.
-		$this->fake_proxy_site_connection();
-		$this->assertTrue( $client->using_proxy() );
-	}
-
-	public function test_get_proxy_setup_url() {
-		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
-
-		$user_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $user_id );
-
-		// If no site ID, pass site registration args.
-		$client = new OAuth_Client( $context );
-		$url    = $client->get_proxy_setup_url();
-		$this->assertContains( 'name=', $url );
-		$this->assertContains( 'url=', $url );
-		$this->assertContains( 'scope=', $url );
-		$this->assertContains( 'nonce=', $url );
-		$this->assertContains( 'redirect_uri=', $url );
-		$this->assertContains( 'action_uri=', $url );
-		$this->assertContains( 'return_uri=', $url );
-		$this->assertContains( 'analytics_redirect_uri=', $url );
-		$this->assertContains( 'user_roles=', $url );
-		$this->assertContains( 'application_name=', $url );
-		$this->assertContains( 'hl=', $url );
-		$this->assertNotContains( 'site_id=', $url );
-
-		// Otherwise, pass site ID and given temporary access code.
-		$fake_credentials = $this->fake_proxy_site_connection();
-		$client           = new OAuth_Client( $context );
-		$url              = $client->get_proxy_setup_url( 'temp-code' );
-		$this->assertContains( 'site_id=' . $fake_credentials['client_id'], $url );
-		$this->assertContains( 'code=temp-code', $url );
-		$this->assertContains( 'scope=', $url );
-		$this->assertContains( 'nonce=', $url );
-		$this->assertContains( 'user_roles=', $url );
-		$this->assertContains( 'application_name=', $url );
-		$this->assertNotContains( '&name=', $url );
-		$this->assertNotContains( 'url=', $url );
-		$this->assertNotContains( 'redirect_uri=', $url );
-		$this->assertNotContains( 'action_uri=', $url );
-		$this->assertNotContains( 'return_uri=', $url );
-		$this->assertNotContains( 'analytics_redirect_uri=', $url );
+		// This ensures the previous defer was properly restored.
+		$this->assertTrue( $google_client_mock->shouldDefer() );
 	}
 
 	public function test_get_proxy_permissions_url() {
@@ -631,19 +724,19 @@ class OAuth_ClientTest extends TestCase {
 		$client = new OAuth_Client( $context );
 		$client->set_token( array( 'access_token' => 'test-access-token' ) );
 		$url = $client->get_proxy_permissions_url();
-		$this->assertContains( 'token=test-access-token', $url );
-		$this->assertContains( 'application_name=', $url );
-		$this->assertContains( 'hl=', $url );
+		$this->assertStringContainsString( 'token=test-access-token', $url );
+		$this->assertStringContainsString( 'application_name=', $url );
+		$this->assertStringContainsString( 'hl=', $url );
 
 		// If there is a site ID, it should also include that.
-		$fake_credentials = $this->fake_proxy_site_connection();
-		$client           = new OAuth_Client( $context );
+		list( $site_id ) = $this->fake_proxy_site_connection();
+		$client          = new OAuth_Client( $context );
 		$client->set_token( array( 'access_token' => 'test-access-token' ) );
 		$url = $client->get_proxy_permissions_url();
-		$this->assertContains( 'token=test-access-token', $url );
-		$this->assertContains( 'site_id=' . $fake_credentials['client_id'], $url );
-		$this->assertContains( 'application_name=', $url );
-		$this->assertContains( 'hl=', $url );
+		$this->assertStringContainsString( 'token=test-access-token', $url );
+		$this->assertStringContainsString( 'site_id=' . $site_id, $url );
+		$this->assertStringContainsString( 'application_name=', $url );
+		$this->assertStringContainsString( 'hl=', $url );
 	}
 
 	protected function get_user_credential_keys() {

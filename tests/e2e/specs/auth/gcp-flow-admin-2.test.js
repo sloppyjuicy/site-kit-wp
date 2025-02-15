@@ -25,10 +25,9 @@ describe( 'the set up flow for the second administrator', () => {
 	beforeAll( async () => {
 		await page.setRequestInterception( true );
 		useRequestInterception( ( request ) => {
+			const url = request.url();
 			if (
-				request
-					.url()
-					.startsWith( 'https://accounts.google.com/o/oauth2/auth' )
+				url.startsWith( 'https://accounts.google.com/o/oauth2/v2/auth' )
 			) {
 				request.respond( {
 					status: 302,
@@ -39,20 +38,12 @@ describe( 'the set up flow for the second administrator', () => {
 						),
 					},
 				} );
-			} else if (
-				request.url().match( '/wp-json/google-site-kit/v1/data/' )
-			) {
-				request.respond( {
-					status: 200,
-				} );
-			} else if (
-				request
-					.url()
-					.match(
-						'google-site-kit/v1/modules/search-console/data/searchanalytics'
-					)
-			) {
-				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+			} else if ( url.match( 'search-console/data/searchanalytics' ) ) {
+				request.respond( { status: 200, body: '[]' } );
+			} else if ( url.match( 'pagespeed-insights/data/pagespeed' ) ) {
+				request.respond( { status: 200, body: '{}' } );
+			} else if ( url.match( 'user/data/survey-timeouts' ) ) {
+				request.respond( { status: 200, body: '[]' } );
 			} else {
 				request.continue();
 			}
@@ -123,7 +114,11 @@ describe( 'the set up flow for the second administrator', () => {
 			page.waitForNavigation(),
 		] );
 
-		await expect( page ).toMatchElement( '#js-googlesitekit-dashboard' );
+		await page.waitForSelector( '#js-googlesitekit-main-dashboard' );
+
+		await expect( page ).toMatchElement(
+			'#js-googlesitekit-main-dashboard'
+		);
 		await expect( page ).toMatchElement(
 			'.googlesitekit-publisher-win__title',
 			{

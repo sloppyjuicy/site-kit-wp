@@ -28,8 +28,8 @@ import {
 	CONTAINER_CREATE,
 } from '../../datastore/constants';
 import {
-	AMP_MODE_SECONDARY,
 	AMP_MODE_PRIMARY,
+	AMP_MODE_SECONDARY,
 } from '../../../../googlesitekit/datastore/site/constants';
 import {
 	createTestRegistry,
@@ -118,7 +118,7 @@ describe( 'WebContainerSelect', () => {
 		);
 	} );
 
-	it( 'can select the "Set up a new container" option', async () => {
+	it( 'can select the "Set up a new container" option', () => {
 		const { account, containers } = factories.buildAccountWithContainers( {
 			container: { usageContext: [ CONTEXT_WEB ] },
 		} );
@@ -187,7 +187,9 @@ describe( 'WebContainerSelect', () => {
 		);
 
 		await act( async () => {
-			fireEvent.click( getByText( webContainer.name ) );
+			fireEvent.click(
+				getByText( new RegExp( webContainer.name, 'i' ) )
+			);
 			await untilResolved( registry, MODULES_TAGMANAGER ).getContainers(
 				accountID
 			);
@@ -205,10 +207,14 @@ describe( 'WebContainerSelect', () => {
 
 	it( 'should render a loading state while accounts have not been loaded', () => {
 		freezeFetch(
-			/^\/google-site-kit\/v1\/modules\/tagmanager\/data\/accounts/
+			new RegExp(
+				'^/google-site-kit/v1/modules/tagmanager/data/accounts'
+			)
 		);
 		freezeFetch(
-			/^\/google-site-kit\/v1\/modules\/tagmanager\/data\/containers/
+			new RegExp(
+				'^/google-site-kit/v1/modules/tagmanager/data/containers'
+			)
 		);
 		const account = factories.accountBuilder();
 		const accountID = account.accountId; // eslint-disable-line sitekit/acronym-case
@@ -228,7 +234,9 @@ describe( 'WebContainerSelect', () => {
 
 	it( 'should render a loading state while containers are loading', () => {
 		freezeFetch(
-			/^\/google-site-kit\/v1\/modules\/tagmanager\/data\/containers/
+			new RegExp(
+				'^/google-site-kit/v1/modules/tagmanager/data/containers'
+			)
 		);
 		const account = factories.accountBuilder();
 		const accountID = account.accountId; // eslint-disable-line sitekit/acronym-case
@@ -276,8 +284,39 @@ describe( 'WebContainerSelect', () => {
 		).toHaveTextContent( /Container/i );
 	} );
 
-	it( 'should be labeled as "Web Container" in a secondary AMP context', () => {
-		const { account, containers } = factories.buildAccountWithContainers();
+	it.each( [ AMP_MODE_PRIMARY, AMP_MODE_SECONDARY ] )(
+		'should be labeled as "Web Container" in a %s AMP context',
+		( ampMode ) => {
+			const { account, containers } =
+				factories.buildAccountWithContainers();
+			const accountID = account.accountId; // eslint-disable-line sitekit/acronym-case
+			registry.dispatch( MODULES_TAGMANAGER ).setAccountID( accountID );
+			registry
+				.dispatch( MODULES_TAGMANAGER )
+				.receiveGetAccounts( [ account ] );
+			registry
+				.dispatch( MODULES_TAGMANAGER )
+				.finishResolution( 'getAccounts', [] );
+			registry
+				.dispatch( MODULES_TAGMANAGER )
+				.receiveGetContainers( containers, { accountID } );
+			registry
+				.dispatch( MODULES_TAGMANAGER )
+				.finishResolution( 'getContainers', [ accountID ] );
+			provideSiteInfo( registry, { ampMode } );
+
+			const { container } = render( <WebContainerSelect />, {
+				registry,
+			} );
+
+			expect(
+				container.querySelector( '.mdc-floating-label' )
+			).toHaveTextContent( /Web Container/i );
+		}
+	);
+
+	it( 'should disable the web container select if the user does not have module access', () => {
+		const { account } = factories.buildAccountWithContainers();
 		const accountID = account.accountId; // eslint-disable-line sitekit/acronym-case
 		registry.dispatch( MODULES_TAGMANAGER ).setAccountID( accountID );
 		registry
@@ -286,36 +325,20 @@ describe( 'WebContainerSelect', () => {
 		registry
 			.dispatch( MODULES_TAGMANAGER )
 			.finishResolution( 'getAccounts', [] );
-		registry
-			.dispatch( MODULES_TAGMANAGER )
-			.receiveGetContainers( containers, { accountID } );
-		registry
-			.dispatch( MODULES_TAGMANAGER )
-			.finishResolution( 'getContainers', [ accountID ] );
-		provideSiteInfo( registry, { ampMode: AMP_MODE_SECONDARY } );
 
-		const { container } = render( <WebContainerSelect />, { registry } );
+		const { container } = render(
+			<WebContainerSelect hasModuleAccess={ false } />,
+			{
+				registry,
+			}
+		);
 
-		expect(
-			container.querySelector( '.mdc-floating-label' )
-		).toHaveTextContent( /Web Container/i );
-	} );
-
-	it( 'should render nothing in a primary AMP context', () => {
-		const account = factories.accountBuilder();
-		registry
-			.dispatch( MODULES_TAGMANAGER )
-			.receiveGetAccounts( [ account ] );
-		provideSiteInfo( registry, { ampMode: AMP_MODE_PRIMARY } );
-
-		const { queryByRole, container } = render( <WebContainerSelect />, {
-			registry,
+		// Verify that the Web container select dropdown is disabled.
+		[
+			'.googlesitekit-tagmanager__select-container--web',
+			'.mdc-select--disabled',
+		].forEach( ( className ) => {
+			expect( container.querySelector( className ) ).toBeInTheDocument();
 		} );
-
-		expect( queryByRole( 'progressbar' ) ).not.toBeInTheDocument();
-		expect(
-			queryByRole( 'menu', { hidden: true } )
-		).not.toBeInTheDocument();
-		expect( container ).toBeEmptyDOMElement();
 	} );
 } );

@@ -1,5 +1,5 @@
 /**
- * WidgetContext component.
+ * WidgetContextRenderer component.
  *
  * Site Kit by Google, Copyright 2021 Google LLC
  *
@@ -25,15 +25,25 @@ import classnames from 'classnames';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import WidgetAreaRenderer from './WidgetAreaRenderer';
+import { CORE_USER } from '../../datastore/user/constants';
 import { CORE_WIDGETS } from '../datastore/constants';
 import { Grid, Row, Cell } from '../../../material-components';
+import useViewOnly from '../../../hooks/useViewOnly';
 
-const { useSelect } = Data;
+function WidgetContextRenderer( props ) {
+	const { id, slug, className, Header, Footer } = props;
 
-const WidgetContextRenderer = ( props ) => {
-	const { slug, className, Header, Footer } = props;
+	const viewOnlyDashboard = useViewOnly();
+
+	const viewableModules = useSelect( ( select ) => {
+		if ( ! viewOnlyDashboard ) {
+			return null;
+		}
+
+		return select( CORE_USER ).getViewableModules();
+	} );
 
 	const widgetAreas = useSelect( ( select ) => {
 		if ( slug ) {
@@ -42,14 +52,30 @@ const WidgetContextRenderer = ( props ) => {
 		return null;
 	} );
 
+	const isActive = useSelect(
+		( select ) =>
+			!! slug &&
+			select( CORE_WIDGETS ).isWidgetContextActive( slug, {
+				modules: viewableModules ? viewableModules : undefined,
+			} )
+	);
+
+	if ( viewableModules === undefined ) {
+		return null;
+	}
+
 	return (
 		<div
+			id={ id }
 			className={ classnames(
 				'googlesitekit-widget-context',
+				{
+					'googlesitekit-hidden': ! isActive,
+				},
 				className
 			) }
 		>
-			{ Header && (
+			{ Header && isActive && (
 				<Grid>
 					<Row>
 						<Cell size={ 12 }>
@@ -64,11 +90,11 @@ const WidgetContextRenderer = ( props ) => {
 						<WidgetAreaRenderer
 							key={ area.slug }
 							slug={ area.slug }
-							totalAreas={ widgetAreas.length }
+							contextID={ id }
 						/>
 					);
 				} ) }
-			{ Footer && (
+			{ Footer && isActive && (
 				<Grid>
 					<Row>
 						<Cell size={ 12 }>
@@ -79,9 +105,10 @@ const WidgetContextRenderer = ( props ) => {
 			) }
 		</div>
 	);
-};
+}
 
 WidgetContextRenderer.propTypes = {
+	id: PropTypes.string,
 	slug: PropTypes.string,
 	className: PropTypes.string,
 	Header: PropTypes.elementType,

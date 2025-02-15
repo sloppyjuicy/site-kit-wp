@@ -17,43 +17,39 @@
  */
 
 /**
+ * WordPress dependencies
+ */
+import { useEffect } from '@wordpress/element';
+
+/**
  * External dependencies
  */
-import { useMount } from 'react-use';
 import PropTypes from 'prop-types';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 
-const { useSelect, useDispatch } = Data;
-
-const SurveyViewTrigger = ( { triggerID, ttl } ) => {
+export default function SurveyViewTrigger( { triggerID, ttl = 0 } ) {
 	const usingProxy = useSelect( ( select ) =>
 		select( CORE_SITE ).isUsingProxy()
 	);
 
 	const { triggerSurvey } = useDispatch( CORE_USER );
 
-	useMount( () => {
+	useEffect( () => {
 		if ( usingProxy ) {
 			triggerSurvey( triggerID, { ttl } );
 		}
-	} );
+	}, [ usingProxy, triggerID, ttl, triggerSurvey ] );
 
 	return null;
-};
+}
 
 SurveyViewTrigger.propTypes = {
 	triggerID: PropTypes.string.isRequired,
 	ttl: PropTypes.number,
 };
-
-SurveyViewTrigger.defaultProps = {
-	ttl: 0,
-};
-
-export default SurveyViewTrigger;

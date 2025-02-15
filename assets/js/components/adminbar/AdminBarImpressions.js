@@ -24,9 +24,10 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import DataBlock from '../DataBlock';
 import PreviewBlock from '../PreviewBlock';
+import { NOTICE_STYLE } from '../GatheringDataNotice';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import {
@@ -34,12 +35,13 @@ import {
 	DATE_RANGE_OFFSET,
 } from '../../modules/search-console/datastore/constants';
 import { calculateChange } from '../../util';
-import { isZeroReport } from '../../modules/search-console/util';
 import sumObjectListValue from '../../util/sum-object-list-value';
 import { partitionReport } from '../../util/partition-report';
-const { useSelect } = Data;
 
-function AdminBarImpressions( { WidgetReportZero, WidgetReportError } ) {
+function AdminBarImpressions( { WidgetReportError } ) {
+	const isGatheringData = useSelect( ( select ) =>
+		select( MODULES_SEARCH_CONSOLE ).isGatheringData()
+	);
 	const url = useSelect( ( select ) =>
 		select( CORE_SITE ).getCurrentEntityURL()
 	);
@@ -73,7 +75,7 @@ function AdminBarImpressions( { WidgetReportZero, WidgetReportError } ) {
 		] )
 	);
 
-	if ( ! hasFinishedResolution ) {
+	if ( ! hasFinishedResolution || isGatheringData === undefined ) {
 		return <PreviewBlock width="auto" height="59px" />;
 	}
 
@@ -81,10 +83,6 @@ function AdminBarImpressions( { WidgetReportZero, WidgetReportError } ) {
 		return (
 			<WidgetReportError moduleSlug="search-console" error={ error } />
 		);
-	}
-
-	if ( isZeroReport( searchConsoleData ) ) {
-		return <WidgetReportZero moduleSlug="search-console" />;
 	}
 
 	const { compareRange, currentRange } = partitionReport( searchConsoleData, {
@@ -100,6 +98,11 @@ function AdminBarImpressions( { WidgetReportZero, WidgetReportError } ) {
 		totalImpressions
 	);
 
+	const gatheringDataProps = {
+		gatheringData: isGatheringData,
+		gatheringDataNoticeStyle: NOTICE_STYLE.SMALL,
+	};
+
 	return (
 		<DataBlock
 			className="overview-total-impressions"
@@ -107,6 +110,7 @@ function AdminBarImpressions( { WidgetReportZero, WidgetReportError } ) {
 			datapoint={ totalImpressions }
 			change={ totalImpressionsChange }
 			changeDataUnit="%"
+			{ ...gatheringDataProps }
 		/>
 	);
 }

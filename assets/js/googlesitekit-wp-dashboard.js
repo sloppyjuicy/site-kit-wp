@@ -27,6 +27,10 @@ import { render } from '@wordpress/element';
  * Internal dependencies
  */
 import Root from './components/Root';
+import {
+	VIEW_CONTEXT_WP_DASHBOARD,
+	VIEW_CONTEXT_WP_DASHBOARD_VIEW_ONLY,
+} from './googlesitekit/constants';
 import WPDashboardApp from './components/wp-dashboard/WPDashboardApp';
 
 // Initialize the app once the DOM is ready.
@@ -36,8 +40,13 @@ domReady( () => {
 	);
 
 	if ( renderTarget ) {
+		const { viewOnly } = renderTarget.dataset;
+		const viewContext = viewOnly
+			? VIEW_CONTEXT_WP_DASHBOARD_VIEW_ONLY
+			: VIEW_CONTEXT_WP_DASHBOARD;
+
 		render(
-			<Root>
+			<Root viewContext={ viewContext }>
 				<WPDashboardApp />
 			</Root>,
 			renderTarget

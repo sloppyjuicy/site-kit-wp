@@ -20,12 +20,13 @@
  * WordPress dependencies
  */
 import { __, sprintf } from '@wordpress/i18n';
-import { Fragment } from '@wordpress/element';
+import { Fragment, createInterpolateElement } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { ProgressBar } from 'googlesitekit-components';
 import { MODULES_ADSENSE } from '../../datastore/constants';
 import { parseAccountID } from '../../util/parsing';
 import {
@@ -33,11 +34,11 @@ import {
 	UseSnippetSwitch,
 	AutoAdExclusionSwitches,
 } from '../common';
-import ProgressBar from '../../../../components/ProgressBar';
 import WebStoriesAdUnitSelect from '../common/WebStoriesAdUnitSelect';
 import Link from '../../../../components/Link';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
-const { useSelect } = Data;
+import AdBlockingRecoverySetupCTANotice from './AdBlockingRecoverySetupCTANotice';
+import AdBlockingRecoveryToggle from './AdBlockingRecoveryToggle';
 
 export default function SettingsForm() {
 	const webStoriesActive = useSelect( ( select ) =>
@@ -46,16 +47,29 @@ export default function SettingsForm() {
 	const clientID = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getClientID()
 	);
-	const { existingTag, hasResolvedGetExistingTag } = useSelect(
-		( select ) => ( {
-			existingTag: select( MODULES_ADSENSE ).getExistingTag(),
-			hasResolvedGetExistingTag: select(
-				MODULES_ADSENSE
-			).hasFinishedResolution( 'getExistingTag' ),
-		} )
+	const existingTag = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getExistingTag()
+	);
+	const hasResolvedGetExistingTag = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).hasFinishedResolution( 'getExistingTag' )
 	);
 
-	if ( ! hasResolvedGetExistingTag ) {
+	// This is called here to ensure that the progress bar is displayed while
+	// the Ad Blocking Recovery existing tag is being resolved to prevent a
+	// layout shift.
+	useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getExistingAdBlockingRecoveryTag()
+	);
+	const hasResolvedGetExistingAdBlockingRecoveryTag = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).hasFinishedResolution(
+			'getExistingAdBlockingRecoveryTag'
+		)
+	);
+
+	if (
+		! hasResolvedGetExistingTag ||
+		! hasResolvedGetExistingAdBlockingRecoveryTag
+	) {
 		return <ProgressBar />;
 	}
 
@@ -63,7 +77,7 @@ export default function SettingsForm() {
 	if ( existingTag && existingTag === clientID ) {
 		// Existing tag with permission.
 		checkedMessage = __(
-			'You’ve already got an AdSense code on your site for this account, we recommend you use Site Kit to place code to get the most out of AdSense.',
+			'You’ve already got an AdSense code on your site for this account, we recommend you use Site Kit to place code to get the most out of AdSense',
 			'google-site-kit'
 		);
 		uncheckedMessage = checkedMessage;
@@ -78,13 +92,13 @@ export default function SettingsForm() {
 			parseAccountID( existingTag )
 		);
 		uncheckedMessage = __(
-			'Please note that AdSense will not show ads on your website unless you’ve already placed the code.',
+			'Please note that AdSense will not show ads on your website unless you’ve already placed the code',
 			'google-site-kit'
 		);
 	} else {
 		// No existing tag.
 		uncheckedMessage = __(
-			'Please note that AdSense will not show ads on your website unless you’ve already placed the code.',
+			'Please note that AdSense will not show ads on your website unless you’ve already placed the code',
 			'google-site-kit'
 		);
 	}
@@ -105,26 +119,39 @@ export default function SettingsForm() {
 				<Fragment>
 					<WebStoriesAdUnitSelect />
 					<p>
-						{ __(
-							'This ad unit will be used for your Web Stories.',
-							'google-site-kit'
-						) }{ ' ' }
-						<Link
-							href={ supportURL }
-							external
-							inherit
-							aria-label={ __(
-								'Learn more about Ad Sense Web Stories.',
+						{ createInterpolateElement(
+							__(
+								'This ad unit will be used for your Web Stories. <LearnMoreLink />',
 								'google-site-kit'
-							) }
-						>
-							{ __( 'Learn more', 'google-site-kit' ) }
-						</Link>
+							),
+							{
+								LearnMoreLink: (
+									<Link
+										href={ supportURL }
+										external
+										aria-label={ __(
+											'Learn more about Ad Sense Web Stories.',
+											'google-site-kit'
+										) }
+									>
+										{ __(
+											'Learn more',
+											'google-site-kit'
+										) }
+									</Link>
+								),
+							}
+						) }
 					</p>
 				</Fragment>
 			) }
 
 			<AutoAdExclusionSwitches />
+
+			<Fragment>
+				<AdBlockingRecoverySetupCTANotice />
+				<AdBlockingRecoveryToggle />
+			</Fragment>
 		</div>
 	);
 }

@@ -24,17 +24,18 @@ import PropTypes from 'prop-types';
 /**
  * Internal dependencies
  */
-import { Grid, Row, Cell } from '../../../../../material-components';
+import { Grid, Cell } from '../../../../../material-components';
 import { calculateChange } from '../../../../../util';
 import DataBlock from '../../../../../components/DataBlock';
+import DataBlockGroup from '../../../../../components/DataBlockGroup';
 
-const Overview = ( {
+function Overview( {
 	metrics,
 	currentRangeData,
 	previousRangeData,
 	selectedStats,
 	handleStatsSelection,
-} ) => {
+} ) {
 	const { totals, headers } = currentRangeData;
 	const { totals: previousTotals } = previousRangeData;
 
@@ -46,7 +47,7 @@ const Overview = ( {
 
 	return (
 		<Grid>
-			<Row>
+			<DataBlockGroup className="mdc-layout-grid__inner">
 				<Cell { ...cellProps }>
 					<DataBlock
 						stat={ 0 }
@@ -114,10 +115,10 @@ const Overview = ( {
 						handleStatSelection={ handleStatsSelection }
 					/>
 				</Cell>
-			</Row>
+			</DataBlockGroup>
 		</Grid>
 	);
-};
+}
 
 Overview.propTypes = {
 	metrics: PropTypes.object,

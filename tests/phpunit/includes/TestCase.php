@@ -12,48 +12,45 @@ namespace Google\Site_Kit\Tests;
 
 use Closure;
 use Google\Site_Kit\Context;
-use Google\Site_Kit\Core\Util\Build_Mode;
 use Google\Site_Kit\Core\Util\Feature_Flags;
 use Google\Site_Kit\Core\Util\Input;
-use Google\Site_Kit\Core\Util\JSON_File;
 use Google\Site_Kit\Tests\Exception\RedirectException;
 use PHPUnit_Framework_MockObject_MockObject;
+use WP_UnitTestCase;
 
-class TestCase extends \WP_UnitTestCase {
+class TestCase extends WP_UnitTestCase {
 	// Do not preserve global state since it doesn't support closures within globals.
 	protected $preserveGlobalState = false;
 
 	protected static $featureFlagsConfig;
 
-	public static function setUpBeforeClass() {
-		parent::setUpBeforeClass();
+	public static function set_up_before_class() {
+		parent::set_up_before_class();
 
 		if ( ! self::$featureFlagsConfig ) {
-			self::$featureFlagsConfig = new JSON_File( GOOGLESITEKIT_PLUGIN_DIR_PATH . 'feature-flags.json' );
+			self::$featureFlagsConfig = json_decode(
+				file_get_contents( GOOGLESITEKIT_PLUGIN_DIR_PATH . 'feature-flags.json' ),
+				true
+			);
 		}
 
 		self::reset_feature_flags();
 	}
 
-	public static function tearDownAfterClass() {
-		parent::tearDownAfterClass();
+	public static function tear_down_after_class() {
+		parent::tear_down_after_class();
 		self::reset_feature_flags();
-		self::reset_build_mode();
 	}
 
 	protected static function reset_feature_flags() {
 		Feature_Flags::set_features( self::$featureFlagsConfig );
 	}
 
-	protected static function reset_build_mode() {
-		Build_Mode::set_mode( Build_Mode::MODE_PRODUCTION );
-	}
-
 	/**
 	 * Runs the routine before each test is executed.
 	 */
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		// At this point all hooks are isolated between tests.
 
@@ -77,8 +74,8 @@ class TestCase extends \WP_UnitTestCase {
 	/**
 	 * After a test method runs, reset any state in WordPress the test method might have changed.
 	 */
-	public function tearDown() {
-		parent::tearDown();
+	public function tear_down() {
+		parent::tear_down();
 		// Clear screen related globals.
 		unset( $GLOBALS['current_screen'], $GLOBALS['taxnow'], $GLOBALS['typenow'] );
 	}
@@ -107,32 +104,32 @@ class TestCase extends \WP_UnitTestCase {
 	/**
 	 * Forcibly set a property of an object that would otherwise not be possible.
 	 *
-	 * @param object|string $class Class instance to set the property on, or class name containing the property.
+	 * @param object|string $class_instance Class instance to set the property on, or class name containing the property.
 	 * @param string $property Property name
 	 * @param mixed $value New value to assign the property
 	 *
 	 * @throws \ReflectionException
 	 */
-	protected function force_set_property( $class, $property, $value ) {
-		$reflection_property = new \ReflectionProperty( $class, $property );
+	protected function force_set_property( $class_instance, $property, $value ) {
+		$reflection_property = new \ReflectionProperty( $class_instance, $property );
 		$reflection_property->setAccessible( true );
-		$reflection_property->setValue( $class, $value );
+		$reflection_property->setValue( $class_instance, $value );
 	}
 
 	/**
 	 * Forcibly get a property's value from an object that would otherwise not be possible.
 	 *
-	 * @param object|string $class Class instance to get the property from, or class name containing the property.
+	 * @param object|string $class_instance Class instance to get the property from, or class name containing the property.
 	 * @param string $property Property name
 	 *
 	 * @return mixed
 	 * @throws \ReflectionException
 	 */
-	protected function force_get_property( $class, $property ) {
-		$reflection_property = new \ReflectionProperty( $class, $property );
+	protected function force_get_property( $class_instance, $property ) {
+		$reflection_property = new \ReflectionProperty( $class_instance, $property );
 		$reflection_property->setAccessible( true );
 
-		return $reflection_property->getValue( $class );
+		return $reflection_property->getValue( $class_instance );
 	}
 
 	/**
@@ -215,6 +212,21 @@ class TestCase extends \WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * Asserts that the associative array subset is within the given array.
+	 *
+	 * Replacement for PHPUnit's deprecated assertArraySubset in PHPUnit 8.
+	 *
+	 * @param array  $subset            Partial array.
+	 * @param array  $array_to_check    Array to check includes the partial.
+	 * @param string $message Optional. Message to display when the assertion fails.
+	 */
+	protected function assertArrayIntersection( array $subset, array $array_to_check, $message = '' ) {
+		$intersection = array_intersect_key( $array_to_check, $subset );
+
+		$this->assertEqualSetsWithIndex( $subset, $intersection, $message );
+	}
+
 	protected function assertOptionNotExists( $option ) {
 		$this->assertNull(
 			$this->queryOption( $option ),
@@ -226,6 +238,20 @@ class TestCase extends \WP_UnitTestCase {
 		$this->assertNotNull(
 			$this->queryOption( $option ),
 			"Failed to assert that option '$option' exists."
+		);
+	}
+
+	protected function assertTransientNotExists( $transient ) {
+		$this->assertNull(
+			$this->queryOption( "_transient_$transient" ),
+			"Failed to assert that transient '$transient' does not exist."
+		);
+	}
+
+	protected function assertTransientExists( $transient ) {
+		$this->assertNotNull(
+			$this->queryOption( "_transient_$transient" ),
+			"Failed to assert that transient '$transient' exists."
 		);
 	}
 
@@ -254,6 +280,13 @@ class TestCase extends \WP_UnitTestCase {
 		$this->assertEquals( $meta_value, $meta['meta_value'], "Failed to assert that post $post_id has \"$meta_key\" meta with \"$meta_value\" value." );
 	}
 
+	protected function assertTermMetaNotExists( $term_id, $meta_key ) {
+		$this->assertNull(
+			$this->queryTermMeta( $term_id, $meta_key ),
+			"Failed to assert that '$meta_key' does not exist for term ID: $term_id."
+		);
+	}
+
 	protected function queryPostMeta( $post_id, $meta_key ) {
 		global $wpdb;
 
@@ -261,6 +294,19 @@ class TestCase extends \WP_UnitTestCase {
 			$wpdb->prepare(
 				"SELECT * FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s",
 				$post_id,
+				$meta_key
+			),
+			ARRAY_A
+		);
+	}
+
+	protected function queryTermMeta( $term_id, $meta_key ) {
+		global $wpdb;
+
+		return $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$wpdb->termmeta} WHERE term_id = %d AND meta_key = %s",
+				$term_id,
 				$meta_key
 			),
 			ARRAY_A
@@ -297,5 +343,31 @@ class TestCase extends \WP_UnitTestCase {
 			$wp_registered_settings,
 			"Failed to assert that a setting '$name' is not registered."
 		);
+	}
+
+	/**
+	 * Subscribes to HTTP requests made via WP HTTP.
+	 *
+	 * Ideally this should hook on to `http_api_debug` rather than `pre_http_request`
+	 * but the former action doesn't fire for blocked HTTP requests until WP 5.3.
+	 * {@link https://github.com/WordPress/WordPress/commit/eeba1c1244ee17424c8953dc416527a97560f6cc}
+	 *
+	 * @param Closure $listener Function to be invoked for all WP HTTP requests.
+	 *                          $listener will be called with $url, $args.
+	 * @param mixed   $response Mock response object.
+	 * @return Closure Function to unsubscribe the added listener.
+	 */
+	protected function subscribe_to_wp_http_requests( Closure $listener, $response = null ) {
+		$capture_callback = function ( $_, $args, $url ) use ( $listener, $response ) {
+			$listener( $url, $args );
+
+			return $response ?: $_;
+		};
+
+		add_filter( 'pre_http_request', $capture_callback, 0, 3 );
+
+		return function () use ( $capture_callback ) {
+			remove_filter( 'pre_http_request', $capture_callback, 0 );
+		};
 	}
 }

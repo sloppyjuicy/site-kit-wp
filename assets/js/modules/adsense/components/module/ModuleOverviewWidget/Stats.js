@@ -24,16 +24,15 @@ import PropTypes from 'prop-types';
 /**
  * Internal dependencies
  */
-import { getSiteStatsDataForGoogleChart } from '../../../util';
+import { getCurrencyPattern } from '../../../../../components/GoogleChart/utils';
+import { getSiteStatsDataForGoogleChart, isZeroReport } from '../../../util';
 import { Grid, Row, Cell } from '../../../../../material-components';
 import GoogleChart from '../../../../../components/GoogleChart';
 
-const Stats = ( {
-	metrics,
-	currentRangeData,
-	previousRangeData,
-	selectedStats,
-} ) => {
+export default function Stats( props ) {
+	const { metrics, currentRangeData, previousRangeData, selectedStats } =
+		props;
+
 	const dataMap = getSiteStatsDataForGoogleChart(
 		currentRangeData,
 		previousRangeData,
@@ -42,17 +41,24 @@ const Stats = ( {
 		currentRangeData.headers[ selectedStats + 1 ]
 	);
 
-	const dates = dataMap.slice( 1 ).map( ( [ date ] ) => date );
+	const colors = [ '#6380b8', '#4bbbbb', '#3c7251', '#8e68cb' ];
 
-	const colors = [ '#4285f4', '#27bcd4', '#1b9688', '#673ab7' ];
+	function getFormat( { type, currencyCode } = {} ) {
+		if ( type === 'METRIC_CURRENCY' ) {
+			return getCurrencyPattern( currencyCode );
+		}
 
-	const formats = {
-		METRIC_TALLY: undefined,
-		METRIC_CURRENCY: 'currency',
-		METRIC_RATIO: 'percent',
-		METRIC_DECIMAL: 'decimal',
-		METRIC_MILLISECONDS: undefined,
-	};
+		const formats = {
+			METRIC_TALLY: undefined,
+			METRIC_RATIO: 'percent',
+			METRIC_DECIMAL: 'decimal',
+			METRIC_MILLISECONDS: undefined,
+		};
+
+		return formats[ type ];
+	}
+
+	const [ , ...ticks ] = dataMap.slice( 1 ).map( ( [ date ] ) => date );
 
 	const options = {
 		curveType: 'function',
@@ -71,7 +77,7 @@ const Stats = ( {
 			},
 		},
 		hAxis: {
-			format: 'M/d/yy',
+			format: 'MMM d',
 			gridlines: {
 				color: '#fff',
 			},
@@ -79,11 +85,10 @@ const Stats = ( {
 				color: '#616161',
 				fontSize: 12,
 			},
-			ticks: dates,
+			ticks,
 		},
 		vAxis: {
-			format:
-				formats[ currentRangeData.headers[ selectedStats + 1 ].type ],
+			format: getFormat( currentRangeData.headers[ selectedStats + 1 ] ),
 			gridlines: {
 				color: '#eee',
 			},
@@ -128,6 +133,15 @@ const Stats = ( {
 		},
 	};
 
+	if (
+		isZeroReport( currentRangeData, selectedStats + 1 ) &&
+		isZeroReport( previousRangeData, selectedStats + 1 )
+	) {
+		options.vAxis.viewWindow.max = 100;
+	} else {
+		options.vAxis.viewWindow.max = undefined;
+	}
+
 	return (
 		<Grid className="googlesitekit-adsense-site-stats">
 			<Row>
@@ -143,7 +157,7 @@ const Stats = ( {
 			</Row>
 		</Grid>
 	);
-};
+}
 
 Stats.propTypes = {
 	metrics: PropTypes.object,
@@ -151,5 +165,3 @@ Stats.propTypes = {
 	previousRangeData: PropTypes.object,
 	selectedStats: PropTypes.number.isRequired,
 };
-
-export default Stats;

@@ -20,6 +20,7 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import { useUpdateEffect } from 'react-use';
 
 /**
  * WordPress dependencies
@@ -30,12 +31,13 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import Switch from '../../../../components/Switch';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Switch } from 'googlesitekit-components';
 import SettingsNotice from '../../../../components/SettingsNotice';
 import { trackEvent } from '../../../../util';
 import { MODULES_ADSENSE } from '../../datastore/constants';
-const { useSelect, useDispatch } = Data;
+import useViewContext from '../../../../hooks/useViewContext';
+import Badge from '../../../../components/Badge';
 
 export default function UseSnippetSwitch( props ) {
 	const {
@@ -48,6 +50,9 @@ export default function UseSnippetSwitch( props ) {
 		saveOnChange,
 	} = props;
 
+	const viewContext = useViewContext();
+	const eventCategory = `${ viewContext }_adsense`;
+
 	const useSnippet = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getUseSnippet()
 	);
@@ -58,14 +63,14 @@ export default function UseSnippetSwitch( props ) {
 	const { setUseSnippet, saveSettings } = useDispatch( MODULES_ADSENSE );
 	const onChange = useCallback( async () => {
 		setUseSnippet( ! useSnippet );
-		trackEvent(
-			'adsense_setup',
-			useSnippet ? 'adsense_tag_enabled' : 'adsense_tag_disabled'
-		);
 		if ( saveOnChange ) {
 			await saveSettings();
 		}
 	}, [ useSnippet, saveOnChange, setUseSnippet, saveSettings ] );
+
+	useUpdateEffect( () => {
+		trackEvent( eventCategory, useSnippet ? 'enable_tag' : 'disable_tag' );
+	}, [ eventCategory, useSnippet ] );
 
 	if ( undefined === useSnippet ) {
 		return null;
@@ -81,9 +86,10 @@ export default function UseSnippetSwitch( props ) {
 					disabled={ isDoingSaveUseSnippet }
 					hideLabel={ false }
 				/>{ ' ' }
-				<span className="googlesitekit-recommended">
-					{ __( 'Recommended', 'google-site-kit' ) }
-				</span>
+				<Badge
+					className="googlesitekit-badge--primary"
+					label={ __( 'Recommended', 'google-site-kit' ) }
+				/>
 			</div>
 			{ useSnippet && checkedMessage && (
 				<SettingsNotice notice={ checkedMessage } />

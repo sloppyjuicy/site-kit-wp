@@ -3,7 +3,9 @@ const path = require( 'path' );
 module.exports = {
 	preset: 'jest-puppeteer',
 	setupFilesAfterEnv: [
+		'<rootDir>/config/screenshots.js',
 		'<rootDir>/config/bootstrap.js',
+		'<rootDir>/config/wordpress-debug-log',
 		'@wordpress/jest-console',
 		'expect-puppeteer',
 	],
@@ -18,4 +20,5 @@ module.exports = {
 	},
 	transformIgnorePatterns: [ 'node_modules' ],
 	testPathIgnorePatterns: [ '.git', 'node_modules' ],
+	verbose: true,
 };

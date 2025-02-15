@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-export { default as DashboardAdSenseTopPages } from './DashboardAdSenseTopPages';
-export { default as DashboardZeroData } from './DashboardZeroData';
-export { default as DashboardSummaryWidget } from './DashboardSummaryWidget';
-export { default as DashboardTopEarningPagesWidget } from './DashboardTopEarningPagesWidget';
+export { default as AdBlockingRecoverySetupCTAWidget } from './AdBlockingRecoverySetupCTAWidget';
+export { default as AdBlockerWarningWidget } from './AdBlockerWarningWidget';
+export { default as AdSenseConnectCTAWidget } from './AdSenseConnectCTAWidget';
+export { default as DashboardTopEarningPagesWidgetGA4 } from './DashboardTopEarningPagesWidgetGA4';

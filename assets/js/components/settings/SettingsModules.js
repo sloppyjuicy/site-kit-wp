@@ -24,14 +24,18 @@ import { Redirect, Route, Switch } from 'react-router-dom';
 /**
  * Internal dependencies
  */
-import { getModulesData } from '../../util';
+import { useSelect } from 'googlesitekit-data';
+import { CORE_MODULES } from '../../googlesitekit/modules/datastore/constants';
 import SettingsAdmin from './SettingsAdmin';
 import SettingsActiveModules from './SettingsActiveModules';
 import SettingsInactiveModules from './SettingsInactiveModules';
 
 function SettingsModules() {
-	const modulesData = getModulesData();
-	if ( ! Object.values( modulesData ).length ) {
+	const modules = useSelect( ( select ) =>
+		select( CORE_MODULES ).getModules()
+	);
+
+	if ( modules === undefined || ! Object.values( modules ).length ) {
 		return null;
 	}
 

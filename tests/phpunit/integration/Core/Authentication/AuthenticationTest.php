@@ -16,23 +16,25 @@ use Google\Site_Kit\Core\Admin\Notice;
 use Google\Site_Kit\Core\Authentication\Authentication;
 use Google\Site_Kit\Core\Authentication\Clients\OAuth_Client;
 use Google\Site_Kit\Core\Authentication\Connected_Proxy_URL;
-use Google\Site_Kit\Core\Authentication\Credentials;
 use Google\Site_Kit\Core\Authentication\Disconnected_Reason;
 use Google\Site_Kit\Core\Authentication\Google_Proxy;
 use Google\Site_Kit\Core\Authentication\Profile;
-use Google\Site_Kit\Core\Authentication\User_Input_State;
 use Google\Site_Kit\Core\Authentication\Verification;
 use Google\Site_Kit\Core\Authentication\Verification_Meta;
+use Google\Site_Kit\Core\Modules\Module_Sharing_Settings;
 use Google\Site_Kit\Core\Permissions\Permissions;
-use Google\Site_Kit\Core\Storage\Encrypted_Options;
 use Google\Site_Kit\Core\Storage\Options;
 use Google\Site_Kit\Core\Storage\User_Options;
-use Google\Site_Kit\Core\Util\Feature_Flags;
-use Google\Site_Kit\Core\Util\User_Input_Settings;
+use Google\Site_Kit\Modules\PageSpeed_Insights\Settings as PageSpeed_Insights_Settings;
+use Google\Site_Kit\Modules\Search_Console\Settings as Search_Console_Settings;
 use Google\Site_Kit\Tests\Exception\RedirectException;
 use Google\Site_Kit\Tests\Fake_Site_Connection_Trait;
+use Google\Site_Kit\Tests\FakeHttp;
 use Google\Site_Kit\Tests\MutableInput;
 use Google\Site_Kit\Tests\TestCase;
+use Google\Site_Kit_Dependencies\GuzzleHttp\Psr7\Response;
+use WP_Error;
+use WP_Screen;
 use WPDieException;
 
 /**
@@ -57,7 +59,6 @@ class AuthenticationTest extends TestCase {
 
 		// Authentication::handle_oauth is invoked on init but we cannot test it due to use of filter_input.
 		$this->assertTrue( has_action( 'admin_init' ) );
-		$this->assertTrue( has_action( 'admin_action_' . Google_Proxy::ACTION_SETUP ) );
 		$this->assertTrue( has_action( OAuth_Client::CRON_REFRESH_PROFILE_DATA ) );
 		$this->assertTrue( has_action( 'googlesitekit_authorize_user' ) );
 
@@ -75,7 +76,6 @@ class AuthenticationTest extends TestCase {
 		$this->assertEqualSets(
 			array(
 				'needs_reauthentication',
-				'oauth_error',
 				'reconnect_after_url_mismatch',
 			),
 			array_filter( $notice_slugs )
@@ -100,29 +100,33 @@ class AuthenticationTest extends TestCase {
 			array(
 				'connectURL',
 				'initialVersion',
-				'userInputState',
+				'isUserInputCompleted',
 				'verified',
+				'hasMultipleAdmins',
 			),
 			array_keys( $user_data )
 		);
 
 		// When a profile is set, additional data is added.
-		$email = 'wapuu.wordpress@gmail.com';
-		$photo = 'https://wapu.us/wp-content/uploads/2017/11/WapuuFinal-100x138.png';
-		$auth->profile()->set( compact( 'email', 'photo' ) );
+		$email     = 'wapuu.wordpress@gmail.com';
+		$photo     = 'https://wapu.us/wp-content/uploads/2017/11/WapuuFinal-100x138.png';
+		$full_name = 'Wapuu WordPress';
+		$auth->profile()->set( compact( 'email', 'photo', 'full_name' ) );
 		$user_data = apply_filters( 'googlesitekit_user_data', array() );
 		$this->assertEqualSets(
 			array(
 				'connectURL',
 				'initialVersion',
-				'userInputState',
+				'isUserInputCompleted',
 				'verified',
 				'user',
+				'hasMultipleAdmins',
 			),
 			array_keys( $user_data )
 		);
 		$this->assertEquals( $email, $user_data['user']['email'] );
 		$this->assertEquals( $photo, $user_data['user']['picture'] );
+		$this->assertEquals( $full_name, $user_data['user']['full_name'] );
 	}
 
 	/**
@@ -178,11 +182,6 @@ class AuthenticationTest extends TestCase {
 		remove_all_actions( 'googlesitekit_reauthorize_user' );
 		$auth->register();
 
-		// We cannot test that the hook has not been added to 'googlesitekit_authorize_user'
-		// since the `register` method also adds another unrelated callback to it unconditionally.
-		// That should be fine though since we're covering the integration below.
-		$this->assertFalse( has_action( 'googlesitekit_reauthorize_user' ) );
-
 		// Response is not used here, so just pass an array.
 		do_action( 'googlesitekit_authorize_user', array(), array(), array() );
 		do_action( 'googlesitekit_reauthorize_user', array() );
@@ -218,10 +217,8 @@ class AuthenticationTest extends TestCase {
 				'isAuthenticated',
 				'isSiteKitConnected',
 				'isVerified',
-				'moduleToSetup',
 				'needReauthenticate',
 				'requiredScopes',
-				'showModuleSetupWizard',
 				'isResettable',
 				'unsatisfiedScopes',
 			),
@@ -241,176 +238,180 @@ class AuthenticationTest extends TestCase {
 		$this->assertEquals( 'https://sitekit.withgoogle.com', wp_validate_redirect( 'https://sitekit.withgoogle.com' ) );
 	}
 
-	public function test_verify_proxy_setup_nonce() {
-		$setup_proxy_admin_action = 'admin_action_' . Google_Proxy::ACTION_SETUP;
-		remove_all_actions( $setup_proxy_admin_action );
+	public function test_register_maybe_refresh_token_for_screen__admin() {
 		$user_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $user_id );
-		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
-		$auth    = new Authentication( $context );
+		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		$user_options = new User_Options( $context, $user_id );
+
+		$auth = new Authentication( $context, null, $user_options );
+
+		remove_all_actions( 'current_screen' );
+		remove_all_actions( 'heartbeat_tick' );
 		$auth->register();
+		$this->assertTrue( has_action( 'current_screen' ) );
+		$this->assertTrue( has_action( 'heartbeat_tick' ) );
 
-		// Ensure that wp_die is called if nonce verification fails.
-		$_GET['nonce'] = 'bad-nonce';
+		$oauth_client = $auth->get_oauth_client();
+		// Fake a valid authentication token on the OAuth client.
+		$this->assertTrue(
+			$oauth_client->set_token(
+				array(
+					'access_token'  => 'test-access-token',
+					'refresh_token' => 'test-refresh-token',
+				)
+			)
+		);
+		// The FakeHttp handler returns 200 by default.
+		FakeHttp::fake_google_http_handler( $oauth_client->get_client() );
 
-		try {
-			do_action( $setup_proxy_admin_action );
-		} catch ( WPDieException $exception ) {
-			$this->assertEquals( 'Invalid nonce.', $exception->getMessage() );
-			return;
-		}
+		// Make sure we start with no errors.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
 
-		$this->fail( 'Expected WPDieException!' );
-	}
+		// Token should not refresh on any screen other other than the dashboard.
+		do_action( 'current_screen', WP_Screen::get( 'some-random-screen' ) );
+		// There should be no errors as refresh_token() should not be called as yet.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
 
-	public function test_handle_site_code_and_redirect_to_proxy() {
-		remove_all_actions( 'admin_action_googlesitekit_proxy_setup' );
-		$user_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $user_id );
-		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
-		$credentials  = new Credentials( new Encrypted_Options( new Options( $context ) ) );
-		$auth         = new Authentication( $context );
-		$google_proxy = $auth->get_google_proxy();
+		// Token should not refresh if a user does not have credentials.
+		do_action( 'current_screen', WP_Screen::get( 'toplevel_page_googlesitekit-dashboard' ) );
+		// There should be no errors as refresh_token() should not be called as yet.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
 
-		$auth->register();
+		// Emulate credentials.
+		$this->fake_proxy_site_connection();
 
-		$this->assertTrue( has_action( 'admin_action_googlesitekit_proxy_setup' ) );
-		$this->assertFalse( $credentials->has() );
+		// Token should still not refresh as it expires after 5 minutes.
+		do_action( 'current_screen', WP_Screen::get( 'toplevel_page_googlesitekit-dashboard' ) );
+		// There should be no errors as refresh_token() should not be called as yet.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
 
-		// For site code to be processed, the code and nonce must be present.
-		$_GET['googlesitekit_code']      = 'test-code';
-		$_GET['googlesitekit_site_code'] = 'test-site-code';
+		// Set the user's token to expire within 5 minutes.
+		$user_options->set( OAuth_Client::OPTION_ACCESS_TOKEN_EXPIRES_IN, 295 );
+		// Token should refresh now as all conditions have been met.
+		do_action( 'current_screen', WP_Screen::get( 'toplevel_page_googlesitekit-dashboard' ) );
 
-		// Stub the response to the proxy oauth API.
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args, $url ) use ( $google_proxy ) {
-				if ( $google_proxy->url( Google_Proxy::OAUTH2_SITE_URI ) !== $url ) {
-					return $preempt;
-				}
+		delete_user_option( $user_id, OAuth_Client::OPTION_ERROR_CODE );
 
-				return array(
-					'headers'       => array(),
-					'body'          => json_encode(
+		// Set the request handler to return a response with a new access token.
+		FakeHttp::fake_google_http_handler(
+			$oauth_client->get_client(),
+			function () {
+				return new Response(
+					200,
+					array(),
+					json_encode(
 						array(
-							'site_id'     => 'test-site-id.apps.sitekit.withgoogle.com',
-							'site_secret' => 'test-site-secret',
+							'access_token' => 'new-test-access-token',
+							'expires_in'   => 3599,
+							'token_type'   => 'Bearer',
 						)
-					),
-					'response'      => array(
-						'code'    => 200,
-						'message' => 'OK',
-					),
-					'cookies'       => array(),
-					'http_response' => null,
+					)
 				);
-			},
-			10,
-			3
+			}
 		);
 
-		$_GET['nonce'] = wp_create_nonce( 'googlesitekit_proxy_setup' );
+		$oauth_client->refresh_token();
 
-		try {
-			do_action( 'admin_action_googlesitekit_proxy_setup' );
-			$this->fail( 'Expected redirection to proxy setup URL!' );
-		} catch ( RedirectException $redirect ) {
-			$location = $redirect->get_location();
-			$this->assertStringStartsWith( 'https://sitekit.withgoogle.com/site-management/setup/', $location );
-			$parsed = wp_parse_url( $location );
-			parse_str( $parsed['query'], $query_args );
-			$this->assertEquals( 'test-site-id.apps.sitekit.withgoogle.com', $query_args['site_id'] );
-			$this->assertEquals( 'test-code', $query_args['code'] );
-		}
-
-		$saved_creds = $credentials->get();
-		$this->assertEquals( 'test-site-id.apps.sitekit.withgoogle.com', $saved_creds['oauth2_client_id'] );
-		$this->assertEquals( 'test-site-secret', $saved_creds['oauth2_client_secret'] );
+		$this->assertEmpty( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $user_id ) );
+		// Make sure the access token was updated.
+		$this->assertEquals( 'new-test-access-token', $oauth_client->get_access_token() );
 	}
 
-	public function test_require_user_input() {
-		$this->enable_feature( 'userInput' );
-		remove_all_actions( 'googlesitekit_authorize_user' );
-		$admin_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $admin_id );
-		$auth = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+	public function test_register_maybe_refresh_token_for_screen__editor_with_shared_modules() {
+		$editor_id = $this->factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor_id );
+		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		$user_options = new User_Options( $context, $editor_id );
+
+		// Allow PageSpeed Insights to be shared with an editor.
+		$test_sharing_settings = array(
+			'pagespeed-insights' => array(
+				'sharedRoles' => array( 'editor' ),
+				'management'  => 'all_admins',
+			),
+			'search-console'     => array(
+				'management' => 'owner',
+			),
+		);
+		add_option( Module_Sharing_Settings::OPTION, $test_sharing_settings );
+
+		$auth = new Authentication( $context, null, $user_options );
 		$auth->register();
 
-		$user_input_state = $this->force_get_property( $auth, 'user_input_state' );
-		// Mocking User_Input_Settings here to avoid adding a ton of complexity
-		// from intercepting a request to the proxy, returning, settings etc.
-		$mock_user_input_settings = $this->getMockBuilder( User_Input_Settings::class )
-			->disableOriginalConstructor()
-			->disableProxyingToOriginalMethods()
-			->setMethods( array( 'set_settings' ) )
-			->getMock();
-		$this->force_set_property( $auth, 'user_input_settings', $mock_user_input_settings );
+		$oauth_client = $auth->get_oauth_client();
+		// Fake a valid authentication token on the OAuth client.
+		$this->assertTrue(
+			$oauth_client->set_token(
+				array(
+					'access_token'  => 'test-access-token',
+					'refresh_token' => 'test-refresh-token',
+				)
+			)
+		);
+		// The FakeHttp handler returns 200 by default.
+		FakeHttp::fake_google_http_handler( $oauth_client->get_client() );
 
-		$this->assertEmpty( $user_input_state->get() );
-		do_action( 'googlesitekit_authorize_user', array(), array(), array() );
-		$this->assertEquals( User_Input_State::VALUE_REQUIRED, $user_input_state->get() );
-	}
+		// Create owners for shareable modules and generate their oauth tokens.
+		$pagespeed_insights_owner_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
+		update_option( PageSpeed_Insights_Settings::OPTION, array( 'ownerID' => $pagespeed_insights_owner_id ) );
+		$this->set_oauth_token_for_user( $oauth_client, $user_options, $pagespeed_insights_owner_id );
+		$search_console_owner_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
+		update_option( Search_Console_Settings::OPTION, array( 'ownerID' => $search_console_owner_id ) );
+		$this->set_oauth_token_for_user( $oauth_client, $user_options, $search_console_owner_id );
 
-	public function test_user_input_not_triggered() {
-		$this->enable_feature( 'userInput' );
-		remove_all_actions( 'googlesitekit_authorize_user' );
-		$admin_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $admin_id );
-		$auth = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
-		$auth->register();
+		// Make sure we start with no errors.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $editor_id ) );
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $pagespeed_insights_owner_id ) );
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $search_console_owner_id ) );
 
-		$user_input_state = $this->force_get_property( $auth, 'user_input_state' );
-		// Mocking User_Input_Settings here to avoid adding a ton of complexity
-		// from intercepting a request to the proxy, returning, settings etc.
-		$mock_user_input_settings = $this->getMockBuilder( User_Input_Settings::class )
-			->disableOriginalConstructor()
-			->disableProxyingToOriginalMethods()
-			->setMethods( array( 'set_settings' ) )
-			->getMock();
-		$this->force_set_property( $auth, 'user_input_settings', $mock_user_input_settings );
+		do_action( 'current_screen', WP_Screen::get( 'toplevel_page_googlesitekit-dashboard' ) );
 
-		$this->assertEmpty( $user_input_state->get() );
+		// Token should not be refreshed for the editor who is not an authenticated admin.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $editor_id ) );
 
-		$mock_scopes = array(
-			'openid',
-			'https://www.googleapis.com/auth/userinfo.profile',
-			'https://www.googleapis.com/auth/userinfo.email',
-			'https://www.googleapis.com/auth/siteverification',
-			'https://www.googleapis.com/auth/webmasters',
-			'https://www.googleapis.com/auth/analytics.readonly',
+		delete_user_option( $pagespeed_insights_owner_id, OAuth_Client::OPTION_ERROR_CODE );
+
+		// Set the request handler to return a response with a new access token.
+		FakeHttp::fake_google_http_handler(
+			$oauth_client->get_client(),
+			function () {
+				return new Response(
+					200,
+					array(),
+					json_encode(
+						array(
+							'access_token' => 'new-test-access-token',
+							'expires_in'   => 3599,
+							'token_type'   => 'Bearer',
+						)
+					)
+				);
+			}
 		);
 
-		$mock_previous_scopes = array(
-			'openid',
-			'https://www.googleapis.com/auth/userinfo.profile',
-			'https://www.googleapis.com/auth/userinfo.email',
-			'https://www.googleapis.com/auth/siteverification',
-			'https://www.googleapis.com/auth/webmasters',
-		);
-		do_action( 'googlesitekit_authorize_user', array(), $mock_scopes, $mock_previous_scopes );
-		$this->assertEmpty( $user_input_state->get() );
+		$oauth_client->refresh_token();
+
+		$this->assertEmpty( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $pagespeed_insights_owner_id ) );
+		// Make sure the access token was updated for the owner of the PageSpeed Insights module.
+		$this->assertEquals( 'new-test-access-token', $oauth_client->get_access_token() );
+
+		// Token should not be refreshed for the owner of search console as search console is not shared with editors.
+		$this->assertFalse( get_user_option( OAuth_Client::OPTION_ERROR_CODE, $search_console_owner_id ) );
 	}
 
-	public function test_require_user_input__without_feature() {
-		remove_all_actions( 'googlesitekit_authorize_user' );
-		$admin_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $admin_id );
-		$auth = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
-		$auth->register();
-
-		$user_input_state = $this->force_get_property( $auth, 'user_input_state' );
-		// Mocking User_Input_Settings here to avoid adding a ton of complexity
-		// from intercepting a request to the proxy, returning, settings etc.
-		$mock_user_input_settings = $this->getMockBuilder( User_Input_Settings::class )
-			->setMethods( array( 'set_settings' ) )
-			->disableProxyingToOriginalMethods()
-			->disableOriginalConstructor()
-			->getMock();
-		$this->force_set_property( $auth, 'user_input_settings', $mock_user_input_settings );
-
-		$this->assertEmpty( $user_input_state->get() );
-		do_action( 'googlesitekit_authorize_user', array(), array(), array() );
-		$this->assertEmpty( $user_input_state->get() );
+	private function set_oauth_token_for_user( $oauth_client, $user_options, $user_id ) {
+		$restore_user = $user_options->switch_user( $user_id );
+		$this->assertTrue(
+			$oauth_client->set_token(
+				array(
+					'access_token'  => 'test-access-token',
+					'refresh_token' => 'test-refresh-token',
+				)
+			)
+		);
+		$user_options->set( OAuth_Client::OPTION_ACCESS_TOKEN_EXPIRES_IN, 295 );
+		$restore_user();
 	}
 
 	public function test_get_oauth_client() {
@@ -493,29 +494,6 @@ class AuthenticationTest extends TestCase {
 		);
 	}
 
-	public function test_disconnect() {
-		$user_id      = $this->factory()->user->create();
-		$context      = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
-		$options      = new Options( $context );
-		$user_options = new User_Options( $context, $user_id );
-		$auth         = new Authentication( $context, $options, $user_options );
-
-		foreach ( $this->get_user_option_keys() as $key ) {
-			$user_options->set( $key, "test-$key-value" );
-		}
-
-		$mock_google_client = $this->getMockBuilder( 'Google\Site_Kit\Core\Authentication\Clients\Google_Site_Kit_Client' )
-			->setMethods( array( 'revokeToken' ) )->getMock();
-		$mock_google_client->expects( $this->once() )->method( 'revokeToken' );
-		$this->force_set_property( $auth->get_oauth_client(), 'google_client', $mock_google_client );
-
-		$auth->disconnect();
-
-		foreach ( $this->get_user_option_keys() as $key ) {
-			$this->assertFalse( $user_options->get( $key ) );
-		}
-	}
-
 	public function test_get_connect_url() {
 		$auth = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
 
@@ -550,7 +528,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $connect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertEquals( 'Invalid nonce.', $e->getMessage() );
+			$this->assertContains( $e->getMessage(), array( 'The link you followed has expired.', 'Are you sure you want to do this?' ) );
 		}
 
 		$_GET['nonce'] = wp_create_nonce( Authentication::ACTION_CONNECT );
@@ -561,7 +539,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $connect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertContains( 'have permissions to authenticate', $e->getMessage() );
+			$this->assertStringContainsString( 'have permissions to authenticate', $e->getMessage() );
 		}
 
 		$editor_id = $this->factory()->user->create( array( 'role' => 'editor' ) );
@@ -572,7 +550,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $connect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertContains( 'have permissions to authenticate', $e->getMessage() );
+			$this->assertStringContainsString( 'have permissions to authenticate', $e->getMessage() );
 		}
 
 		// Administrators can authenticate.
@@ -615,7 +593,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $disconnect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertEquals( 'Invalid nonce.', $e->getMessage() );
+			$this->assertContains( $e->getMessage(), array( 'The link you followed has expired.', 'Are you sure you want to do this?' ) );
 		}
 
 		$_GET['nonce'] = wp_create_nonce( Authentication::ACTION_DISCONNECT );
@@ -626,7 +604,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $disconnect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertContains( 'have permissions to authenticate', $e->getMessage() );
+			$this->assertStringContainsString( 'have permissions to authenticate', $e->getMessage() );
 		}
 
 		$editor_id = $this->factory()->user->create( array( 'role' => 'editor' ) );
@@ -637,7 +615,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $disconnect_action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( WPDieException $e ) {
-			$this->assertContains( 'have permissions to authenticate', $e->getMessage() );
+			$this->assertStringContainsString( 'have permissions to authenticate', $e->getMessage() );
 		}
 
 		// Administrators can authenticate.
@@ -675,7 +653,7 @@ class AuthenticationTest extends TestCase {
 		$this->assertArrayHasKey( 'action', $args );
 		$this->assertArrayHasKey( 'nonce', $args );
 
-		$this->assertEquals( Google_Proxy::ACTION_SETUP, $args['action'] );
+		$this->assertEquals( Google_Proxy::ACTION_SETUP_START, $args['action'] );
 	}
 
 	public function test_set_connected_proxy_url() {
@@ -687,7 +665,7 @@ class AuthenticationTest extends TestCase {
 		$authentication = new Authentication( $context, $options );
 		$authentication->register();
 
-		$home_url_hook = function() {
+		$home_url_hook = function () {
 			return 'https://example.com/subsite';
 		};
 
@@ -723,7 +701,7 @@ class AuthenticationTest extends TestCase {
 		// Ensure admin user has Permissions::SETUP cap regardless of authentication.
 		add_filter(
 			'user_has_cap',
-			function( $caps ) {
+			function ( $caps ) {
 				$caps[ Permissions::SETUP ] = true;
 				return $caps;
 			}
@@ -735,50 +713,6 @@ class AuthenticationTest extends TestCase {
 			Disconnected_Reason::REASON_CONNECTED_URL_MISMATCH,
 			$user_options->get( Disconnected_Reason::OPTION )
 		);
-	}
-
-	public function test_handle_sync_site_fields() {
-		remove_all_actions( 'admin_action_' . Google_Proxy::ACTION_SETUP );
-
-		$user_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
-		wp_set_current_user( $user_id );
-
-		$context           = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE, new MutableInput() );
-		$options           = new Options( $context );
-		$user_options      = new User_Options( $context );
-		$encrypted_options = new Encrypted_Options( $options );
-
-		$authentication = new Authentication( $context, $options, $user_options );
-		$authentication->register();
-
-		// Emulate credentials.
-		$fake_proxy_credentials = $this->fake_proxy_site_connection();
-
-		// Ensure admin user has Permissions::SETUP cap regardless of authentication.
-		add_filter(
-			'user_has_cap',
-			function( $caps ) {
-				$caps[ Permissions::SETUP ] = true;
-				return $caps;
-			}
-		);
-
-		$_GET['nonce']              = wp_create_nonce( Google_Proxy::ACTION_SETUP );
-		$_GET['googlesitekit_code'] = 'test-code';
-
-		try {
-			do_action( 'admin_action_' . Google_Proxy::ACTION_SETUP );
-			$this->fail( 'Expected redirection to proxy setup URL!' );
-		} catch ( RedirectException $redirect ) {
-			$location = $redirect->get_location();
-			$this->assertStringStartsWith( 'https://sitekit.withgoogle.com/site-management/setup/', $location );
-
-			$parsed = wp_parse_url( $location );
-			parse_str( $parsed['query'], $query_args );
-
-			$this->assertEquals( $fake_proxy_credentials['client_id'], $query_args['site_id'] );
-			$this->assertEquals( 'test-code', $query_args['code'] );
-		}
 	}
 
 	/**
@@ -806,7 +740,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( Exception $e ) {
-			$this->assertEquals( 'Invalid nonce.', $e->getMessage() );
+			$this->assertEquals( 'The link you followed has expired.</p><p><a href="http://example.org/wp-admin/admin.php?page=googlesitekit-splash">Please try again</a>. Retry didn’t work? <a href="https://sitekit.withgoogle.com/support?error_id=nonce_expired" target="_blank">Get help</a>.', $e->getMessage() );
 		}
 
 		$_GET['nonce'] = wp_create_nonce( Google_Proxy::ACTION_PERMISSIONS );
@@ -817,7 +751,7 @@ class AuthenticationTest extends TestCase {
 			do_action( $action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( Exception $e ) {
-			$this->assertContains( 'insufficient permissions to manage Site Kit permissions', $e->getMessage() );
+			$this->assertStringContainsString( 'insufficient permissions to manage Site Kit permissions', $e->getMessage() );
 		}
 
 		wp_set_current_user( $admin_id );
@@ -831,10 +765,10 @@ class AuthenticationTest extends TestCase {
 			do_action( $action );
 			$this->fail( 'Expected WPDieException to be thrown' );
 		} catch ( Exception $e ) {
-			$this->assertContains( 'Site Kit is not configured to use the authentication proxy', $e->getMessage() );
+			$this->assertStringContainsString( 'Site Kit is not configured to use the authentication proxy', $e->getMessage() );
 		}
 
-		$fake_proxy_credentials = $this->fake_proxy_site_connection();
+		list( $site_id ) = $this->fake_proxy_site_connection();
 
 		try {
 			do_action( $action );
@@ -845,49 +779,149 @@ class AuthenticationTest extends TestCase {
 			$parsed = wp_parse_url( $location );
 			parse_str( $parsed['query'], $query_args );
 
-			$this->assertEquals( $fake_proxy_credentials['client_id'], $query_args['site_id'] );
+			$this->assertEquals( $site_id, $query_args['site_id'] );
 		}
 	}
 
-	public function test_filter_features_via_proxy() {
-		remove_all_filters( 'googlesitekit_is_feature_enabled' );
+	public function test_invalid_nonce_error_non_sitekit_action() {
+		try {
+			$authentication = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+			$authentication->invalid_nonce_error( 'log-out' );
+		} catch ( WPDieException $exception ) {
+			$this->assertStringStartsWith( 'You are attempting to log out of Test Blog', $exception->getMessage() );
+			return;
+		}
+		$this->fail( 'Expected WPDieException!' );
+	}
 
-		$this->fake_proxy_site_connection();
+	public function test_invalid_nonce_error_sitekit_action() {
+		try {
+			$authentication = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+			$authentication->invalid_nonce_error( 'googlesitekit_proxy_foo_action' );
+		} catch ( WPDieException $exception ) {
+			$this->assertEquals( 'The link you followed has expired.</p><p><a href="http://example.org/wp-admin/admin.php?page=googlesitekit-splash">Please try again</a>. Retry didn’t work? <a href="https://sitekit.withgoogle.com/support?error_id=nonce_expired" target="_blank">Get help</a>.', $exception->getMessage() );
+			return;
+		}
+		$this->fail( 'Expected WPDieException!' );
+	}
 
-		$context        = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
-		$authentication = new Authentication( $context );
-		$google_proxy   = $authentication->get_google_proxy();
+	public function test_googlesitekit_inline_base_data_standard_version() {
+		$version = get_bloginfo( 'version' );
 
-		$this->assertFalse( has_filter( 'googlesitekit_is_feature_enabled' ) );
-		$authentication->register();
-		$this->assertTrue( has_filter( 'googlesitekit_is_feature_enabled' ) );
+		$admin_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
 
-		add_filter(
-			'pre_http_request',
-			function ( $preempt, $args, $url ) use ( $google_proxy ) {
-				if ( $google_proxy->url( Google_Proxy::FEATURES_URI ) !== $url ) {
-					return $preempt;
-				}
+		add_filter( 'plugins_auto_update_enabled', '__return_true' );
 
-				$data = array(
-					'userInput'       => array( 'enabled' => true ),
-					'test.featureOne' => array( 'enabled' => true ),
-					'test.featureTwo' => array( 'enabled' => false ),
-				);
+		$data = apply_filters( 'googlesitekit_inline_base_data', array() );
+		$this->assertArrayHasKey( 'wpVersion', $data );
+		$this->assertEquals( $version, $data['wpVersion']['version'] );
 
-				return array(
-					'headers'  => array(),
-					'body'     => wp_json_encode( $data ),
-					'response' => array( 'code' => 200 ),
-				);
-			},
-			10,
-			3
+		if ( version_compare( $version, '5.5', '>=' ) ) {
+			$this->assertTrue( $data['changePluginAutoUpdatesCapacity'] );
+			$this->assertFalse( $data['siteKitAutoUpdatesEnabled'] );
+		}
+	}
+
+	public function test_googlesitekit_inline_base_data_plugin_autoupdate_force_disabled() {
+		$version = get_bloginfo( 'version' );
+
+		$admin_id = $this->factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		add_filter( 'plugins_auto_update_enabled', '__return_true' );
+		add_filter( 'auto_update_plugin', '__return_false' );
+
+		$data = apply_filters( 'googlesitekit_inline_base_data', array() );
+
+		if ( version_compare( $version, '5.6', '>=' ) ) {
+			$this->assertFalse( $data['changePluginAutoUpdatesCapacity'] );
+		} elseif ( version_compare( $version, '5.5', '>=' ) ) {
+			$this->assertTrue( $data['changePluginAutoUpdatesCapacity'] );
+		}
+	}
+
+	public function test_googlesitekit_inline_base_data_plugin_autoupdate_disabled() {
+		$version = get_bloginfo( 'version' );
+
+		$editor_id = $this->factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor_id );
+
+		add_filter( 'plugins_auto_update_enabled', '__return_false' );
+
+		$data = apply_filters( 'googlesitekit_inline_base_data', array() );
+
+		if ( version_compare( $version, '5.5', '>=' ) ) {
+			$this->assertFalse( $data['changePluginAutoUpdatesCapacity'] );
+		}
+	}
+
+	public function test_googlesitekit_inline_base_data_plugin_autoupdates_forced() {
+		$version = get_bloginfo( 'version' );
+
+		$editor_id = $this->factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor_id );
+
+		add_filter( 'plugins_auto_update_enabled', '__return_true' );
+		add_filter( 'auto_update_plugin', '__return_true' );
+
+		$data = apply_filters( 'googlesitekit_inline_base_data', array() );
+
+		if ( version_compare( $version, '5.5', '>=' ) ) {
+			$this->assertFalse( $data['changePluginAutoUpdatesCapacity'] );
+		}
+	}
+
+	public function test_googlesitekit_inline_js_wp_version_non_standard_version() {
+		$version = '42';
+
+		$class  = new \ReflectionClass( Authentication::class );
+		$method = $class->getMethod( 'inline_js_wp_version' );
+		$method->setAccessible( true );
+
+		$js_inline_wp_version = $method->invokeArgs(
+			new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) ),
+			array( $version )
 		);
 
-		$this->assertFalse( apply_filters( 'googlesitekit_is_feature_enabled', false, 'nonExisting' ) );
-		$this->assertTrue( apply_filters( 'googlesitekit_is_feature_enabled', false, 'test.featureOne' ) );
-		$this->assertFalse( apply_filters( 'googlesitekit_is_feature_enabled', false, 'test.featureTwo' ) );
+		$this->assertEquals( '42', $js_inline_wp_version['version'] );
+		$this->assertEquals( '42', $js_inline_wp_version['major'] );
+		$this->assertEquals( '0', $js_inline_wp_version['minor'] );
+	}
+
+	/**
+	 * @param string $site_url
+	 * @param string? $expected_redirect
+	 * @dataProvider data_site_urls
+	 */
+	public function test_allowed_redirect_hosts( $site_url, $expected_redirect ) {
+		remove_all_filters( 'allowed_redirect_hosts' );
+		$authentication = new Authentication( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
+		$authentication->register();
+
+		if ( null === $expected_redirect ) {
+			$expected_redirect = $site_url;
+		}
+
+		update_option( 'home', $site_url );
+		update_option( 'siteurl', $site_url );
+
+		try {
+			wp_safe_redirect( $site_url ); // phpcs:ignore WordPressVIPMinimum.Security.ExitAfterRedirect.NoExit
+			$this->fail( 'Expected redirection to site URL!' );
+		} catch ( RedirectException $redirect ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+			// The test will fail if this isn't thrown so we can continue below.
+		}
+
+		$this->assertEquals( $expected_redirect, $redirect->get_location() );
+	}
+
+	public function data_site_urls() {
+		return array(
+			'common ascii'   => array( 'https://example.com', null ),
+			'punycode ascii' => array( 'https://xn--xmpl-loa2a55a.test', null ),
+			'unicode'        => array( 'https://éxämplę.test', 'https://' . rawurlencode( 'éxämplę.test' ) ),
+		);
 	}
 
 	protected function get_user_option_keys() {
@@ -904,5 +938,4 @@ class AuthenticationTest extends TestCase {
 			Verification_Meta::OPTION,
 		);
 	}
-
 }

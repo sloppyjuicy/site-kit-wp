@@ -24,16 +24,19 @@ import invariant from 'invariant';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { combineStores, commonStore } from 'googlesitekit-data';
 import { createNotificationsStore } from '../data/create-notifications-store';
 import {
 	createSettingsStore,
 	makeDefaultSubmitChanges,
 	makeDefaultCanSubmitChanges,
+	makeDefaultRollbackChanges,
+	makeDefaultHaveSettingsChanged,
 } from '../data/create-settings-store';
 import { createErrorStore } from '../data/create-error-store';
 import { createInfoStore } from './create-info-store';
 import { createSubmitChangesStore } from './create-submit-changes-store';
+import { createValidationSelector } from '../data/utils';
 
 /**
  * Creates a base store object for a Site Kit module.
@@ -50,26 +53,31 @@ import { createSubmitChangesStore } from './create-submit-changes-store';
  * @param {string}   slug                            Slug of the module that the store is for.
  * @param {Object}   args                            Arguments to consider for the store.
  * @param {number}   args.storeName                  Store name to use.
- * @param {Array}    [args.settingSlugs]             Optional. If the module store should support settings, this needs to be a list of the slugs that are part of the module and handled by the module's 'modules/{slug}/data/settings' API endpoint.
- *                                                    Default is undefined.
- * @param {string}   [args.adminPage]                Optional. Store admin page. Default is 'googlesitekit-dashboard'.
+ * @param {Array}    [args.settingSlugs]             Optional. If the module store should support settings, this needs to be a list of the slugs that are part of the module and handled by the module's 'modules/{slug}/data/settings' API endpoint. Default is undefined.
+ * @param {Array}    [args.ownedSettingsSlugs]       Optional. List of "owned settings" for this module, if they exist.
+ * @param {Object}   [args.initialSettings]          Optional. An initial set of settings for the module as key-value pairs.
  * @param {boolean}  [args.requiresSetup]            Optional. Store flag for requires setup. Default is 'true'.
  * @param {Function} [args.submitChanges]            Optional. Submit settings changes handler.
+ * @param {Function} [args.rollbackChanges]          Optional. Rollbacks settings changes handler.
  * @param {Function} [args.validateCanSubmitChanges] Optional. A function to validate whether module settings can be submitted.
+ * @param {Function} [args.validateIsSetupBlocked]   Optional. A function to validate whether module setup is terminally blocked from continuing.
  * @return {Object} The base module store object, with additional `STORE_NAME` and
  *                  `initialState` properties.
  */
-export const createModuleStore = (
-	slug,
-	{
-		storeName = undefined,
-		settingSlugs = undefined,
-		adminPage = 'googlesitekit-dashboard',
+export function createModuleStore( slug, args = {} ) {
+	const {
+		storeName,
+		settingSlugs,
+		ownedSettingsSlugs = undefined,
+		initialSettings = undefined,
 		requiresSetup = true,
-		submitChanges = undefined,
-		validateCanSubmitChanges = undefined,
-	} = {}
-) => {
+		submitChanges,
+		rollbackChanges,
+		validateHaveSettingsChanged = null,
+		validateCanSubmitChanges,
+		validateIsSetupBlocked = undefined,
+	} = args;
+
 	invariant( slug, 'slug is required.' );
 	invariant( storeName, 'storeName is required.' );
 
@@ -84,9 +92,22 @@ export const createModuleStore = (
 
 	const infoStore = createInfoStore( slug, {
 		storeName,
-		adminPage,
 		requiresSetup,
 	} );
+
+	const setupBlockedStore = {};
+	if ( requiresSetup && validateIsSetupBlocked ) {
+		const {
+			safeSelector: isSetupBlocked,
+			dangerousSelector: __dangerousIsSetupBlocked,
+		} = createValidationSelector( validateIsSetupBlocked, {
+			negate: true,
+		} );
+		setupBlockedStore.selectors = {
+			isSetupBlocked,
+			__dangerousIsSetupBlocked,
+		};
+	}
 
 	let combinedStore = {};
 	if ( 'undefined' !== typeof settingSlugs ) {
@@ -95,35 +116,44 @@ export const createModuleStore = (
 			slug,
 			'settings',
 			{
+				ownedSettingsSlugs,
 				storeName,
 				settingSlugs,
+				initialSettings,
+				validateHaveSettingsChanged:
+					validateHaveSettingsChanged ||
+					makeDefaultHaveSettingsChanged(),
 			}
 		);
 
 		const submitChangesStore = createSubmitChangesStore( {
 			submitChanges:
 				submitChanges || makeDefaultSubmitChanges( slug, storeName ),
+			rollbackChanges:
+				rollbackChanges || makeDefaultRollbackChanges( storeName ),
 			validateCanSubmitChanges:
 				validateCanSubmitChanges ||
 				makeDefaultCanSubmitChanges( storeName ),
 		} );
 
-		// to prevent duplication errors during combining stores, we don't need to combine
-		// Data.commonStore here since settingsStore already uses commonActions and commonControls
-		// from the Data.commonStore.
-		combinedStore = Data.combineStores(
+		// To prevent duplication errors during combining stores, we don't need to combine
+		// commonStore here since settingsStore already uses commonActions and commonControls
+		// from the commonStore.
+		combinedStore = combineStores(
 			notificationsStore,
 			settingsStore,
 			submitChangesStore,
 			infoStore,
-			createErrorStore()
+			createErrorStore( storeName ),
+			setupBlockedStore
 		);
 	} else {
-		combinedStore = Data.combineStores(
-			Data.commonStore,
+		combinedStore = combineStores(
+			commonStore,
 			notificationsStore,
 			infoStore,
-			createErrorStore(),
+			setupBlockedStore,
+			createErrorStore( storeName ),
 			createSubmitChangesStore( {
 				submitChanges,
 				validateCanSubmitChanges,
@@ -134,4 +164,4 @@ export const createModuleStore = (
 	combinedStore.STORE_NAME = storeName;
 
 	return combinedStore;
-};
+}

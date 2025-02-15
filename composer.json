@@ -5,27 +5,29 @@
   "type": "wordpress-plugin",
   "homepage": "https://sitekit.withgoogle.com",
   "require-dev": {
-    "automattic/vipwpcs": "^2",
+    "automattic/vipwpcs": "^3",
     "dealerdirect/phpcodesniffer-composer-installer": "^0.7.0",
-    "roots/wordpress": ">=4.7",
     "phpcompatibility/phpcompatibility-wp": "^2.1",
-    "phpunit/phpunit": "^5 || ^6 || ^7",
+    "phpunit/phpunit": "^9.0",
     "roave/security-advisories": "dev-latest",
-    "squizlabs/php_codesniffer": "^3.3",
-    "wp-coding-standards/wpcs": "^2",
-    "wp-phpunit/wp-phpunit": ">=4.7"
+    "roots/wordpress": ">=5.2",
+    "squizlabs/php_codesniffer": "^3.7",
+    "wp-coding-standards/wpcs": "^3",
+    "wp-phpunit/wp-phpunit": ">=5.2",
+    "yoast/phpunit-polyfills": "^2.0"
   },
   "require": {
-    "php": ">=5.6",
+    "php": ">=7.4",
     "ext-json": "*",
     "ext-openssl": "*",
-    "google/apiclient": "^2.9.1",
-    "google/apiclient-services": "^0.200",
-    "guzzlehttp/guzzle": "^5.3.3",
-    "true/punycode": "^2.0 <2.1.1"
+    "google/apiclient": "^2.14.0",
+    "google/apiclient-services-adsenselinks": "^0.1.0",
+    "google/apiclient-services-subscribewithgoogle": "^0.1.0",
+    "guzzlehttp/guzzle": "^6.5.8",
+    "symfony/polyfill-intl-idn": "^1.29.0"
   },
   "replace": {
-    "phpseclib/phpseclib": "*"
+    "paragonie/random_compat": ">=2"
   },
   "autoload": {
     "psr-4": {
@@ -39,13 +41,33 @@
   },
   "config": {
     "platform": {
-      "php": "5.6"
+      "php": "7.4.33"
     },
-    "sort-packages": true
+    "sort-packages": true,
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true,
+      "roots/wordpress-core-installer": true
+    }
   },
   "extra": {
     "wordpress-install-dir": "vendor/roots/wordpress"
   },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "packages/apiclient-services-adsenselinks",
+      "options": {
+        "symlink": false
+      }
+    },
+    {
+      "type": "path",
+      "url": "packages/apiclient-services-subscribewithgoogle",
+      "options": {
+        "symlink": false
+      }
+    }
+  ],
   "scripts": {
     "post-install-cmd": [
       "@prefix-dependencies"
@@ -55,7 +77,7 @@
     ],
     "prefix-dependencies": [
       "@composer --working-dir=php-scoper install",
-      "php-scoper/vendor/bin/php-scoper add --output-dir=./third-party --force --quiet",
+      "@php -dxdebug.mode=off php-scoper/vendor/bin/php-scoper add --output-dir=./third-party --force --quiet",
       "@autoload-includes",
       "@autoload-third-party",
       "@composer dump-autoload --no-dev",
@@ -78,7 +100,7 @@
     ],
     "lint": "phpcs",
     "lint-fix": "phpcbf",
-    "test":  "phpunit",
+    "test": "phpunit",
     "test:multisite": "@test --configuration=phpunit.multisite.xml"
   }
 }

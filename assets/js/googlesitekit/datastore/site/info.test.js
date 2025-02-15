@@ -22,7 +22,6 @@
 import {
 	createTestRegistry,
 	untilResolved,
-	unsubscribeFromAll,
 	provideSiteInfo,
 } from '../../../../../tests/js/utils';
 import { initialState } from './index';
@@ -37,9 +36,21 @@ describe( 'core/site site info', () => {
 		referenceSiteURL: 'http://example.com',
 		proxyPermissionsURL: '', // not available until site is authenticated
 		proxySetupURL: 'https://sitekit.withgoogle.com/site-management/setup/', // params omitted
+		setupErrorMessage: null,
+		setupErrorRedoURL: null,
 		siteName: 'Something Test',
+		siteLocale: 'en-US',
 		timezone: 'America/Denver',
 		usingProxy: true,
+		widgetsAdminURL: 'http://example.com/wp-admin/widgets.php',
+		postTypes: [
+			{
+				slug: 'post',
+				label: 'Post',
+			},
+		],
+		productPostType: [ 'product' ],
+		isMultisite: false,
 	};
 	const entityInfoVar = '_googlesitekitEntityData';
 	const entityInfo = {
@@ -49,15 +60,16 @@ describe( 'core/site site info', () => {
 		currentEntityID: '4',
 	};
 	let registry;
+	let store;
 
 	beforeEach( () => {
 		registry = createTestRegistry();
+		store = registry.stores[ CORE_SITE ].store;
 	} );
 
 	afterEach( () => {
 		delete global[ baseInfoVar ];
 		delete global[ entityInfoVar ];
-		unsubscribeFromAll( registry );
 	} );
 
 	describe( 'actions', () => {
@@ -80,6 +92,140 @@ describe( 'core/site site info', () => {
 					...entityInfo,
 					currentEntityID: 4,
 				} );
+			} );
+		} );
+
+		describe( 'setSiteKitAutoUpdatesEnabled', () => {
+			it( 'sets the siteKitAutoUpdatesEnabled property', () => {
+				registry
+					.dispatch( CORE_SITE )
+					.setSiteKitAutoUpdatesEnabled( true );
+
+				expect(
+					registry.select( CORE_SITE ).getSiteKitAutoUpdatesEnabled()
+				).toBe( true );
+
+				registry
+					.dispatch( CORE_SITE )
+					.setSiteKitAutoUpdatesEnabled( false );
+
+				expect(
+					registry.select( CORE_SITE ).getSiteKitAutoUpdatesEnabled()
+				).toBe( false );
+			} );
+
+			it( 'requires a boolean argument', () => {
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setSiteKitAutoUpdatesEnabled();
+				} ).toThrow( 'siteKitAutoUpdatesEnabled must be a boolean.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setSiteKitAutoUpdatesEnabled( undefined );
+				} ).toThrow( 'siteKitAutoUpdatesEnabled must be a boolean.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setSiteKitAutoUpdatesEnabled( 0 );
+				} ).toThrow( 'siteKitAutoUpdatesEnabled must be a boolean.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setSiteKitAutoUpdatesEnabled( true );
+
+					registry
+						.dispatch( CORE_SITE )
+						.setSiteKitAutoUpdatesEnabled( false );
+				} ).not.toThrow(
+					'siteKitAutoUpdatesEnabled must be a boolean.'
+				);
+			} );
+		} );
+
+		describe( 'setKeyMetricsSetupCompletedBy', () => {
+			it( 'sets the `keyMetricsSetupCompletedBy` property', () => {
+				registry
+					.dispatch( CORE_SITE )
+					.setKeyMetricsSetupCompletedBy( 123 );
+
+				expect(
+					store.getState().siteInfo.keyMetricsSetupCompletedBy
+				).toBe( 123 );
+			} );
+
+			it( 'requires a number argument', () => {
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setKeyMetricsSetupCompletedBy();
+				} ).toThrow( 'keyMetricsSetupCompletedBy must be a number.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setKeyMetricsSetupCompletedBy( undefined );
+				} ).toThrow( 'keyMetricsSetupCompletedBy must be a number.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setKeyMetricsSetupCompletedBy( true );
+				} ).toThrow( 'keyMetricsSetupCompletedBy must be a number.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setKeyMetricsSetupCompletedBy( 1 );
+
+					registry
+						.dispatch( CORE_SITE )
+						.setKeyMetricsSetupCompletedBy( 0 );
+				} ).not.toThrow(
+					'keyMetricsSetupCompletedBy must be a number.'
+				);
+			} );
+		} );
+
+		describe( 'setSetupErrorCode', () => {
+			it( 'sets the `setupErrorCode` property', () => {
+				registry
+					.dispatch( CORE_SITE )
+					.setSetupErrorCode( 'error_code' );
+
+				expect( store.getState().siteInfo.setupErrorCode ).toBe(
+					'error_code'
+				);
+			} );
+
+			it( 'requires a string or null argument', () => {
+				expect( () => {
+					registry.dispatch( CORE_SITE ).setSetupErrorCode();
+				} ).toThrow( 'setupErrorCode must be a string or null.' );
+
+				expect( () => {
+					registry
+						.dispatch( CORE_SITE )
+						.setSetupErrorCode( undefined );
+				} ).toThrow( 'setupErrorCode must be a string or null.' );
+
+				expect( () => {
+					registry.dispatch( CORE_SITE ).setSetupErrorCode( true );
+				} ).toThrow( 'setupErrorCode must be a string or null.' );
+
+				expect( () => {
+					registry.dispatch( CORE_SITE ).setSetupErrorCode( 1 );
+				} ).toThrow( 'setupErrorCode must be a string or null.' );
+
+				expect( () => {
+					registry.dispatch( CORE_SITE ).setSetupErrorCode( null );
+
+					registry.dispatch( CORE_SITE ).setSetupErrorCode( 'error' );
+				} ).not.toThrow( 'setupErrorCode must be a string or null.' );
 			} );
 		} );
 	} );
@@ -193,6 +339,8 @@ describe( 'core/site site info', () => {
 
 				const adminURL = registry.select( CORE_SITE ).getAdminURL();
 
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
+
 				expect( adminURL ).toEqual( undefined );
 			} );
 		} );
@@ -227,6 +375,8 @@ describe( 'core/site site info', () => {
 
 				const info = registry.select( CORE_SITE ).getSiteInfo();
 
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
+
 				expect( info ).toBe( initialState.siteInfo );
 				expect( console ).toHaveErrored();
 			} );
@@ -244,13 +394,28 @@ describe( 'core/site site info', () => {
 			[ 'getProxySetupURL', 'proxySetupURL' ],
 			[ 'getProxyPermissionsURL', 'proxyPermissionsURL' ],
 			[ 'getSiteName', 'siteName' ],
+			[ 'getSiteLocale', 'siteLocale' ],
+			[ 'getSetupErrorCode', 'setupErrorCode' ],
+			[ 'getSetupErrorMessage', 'setupErrorMessage' ],
+			[ 'getSetupErrorRedoURL', 'setupErrorRedoURL' ],
+			[ 'getProxySupportLinkURL', 'proxySupportLinkURL' ],
+			[ 'getWidgetsAdminURL', 'widgetsAdminURL' ],
+			[ 'getWPVersion', 'wpVersion' ],
+			[ 'getUpdateCoreURL', 'updateCoreURL' ],
 			[ 'getTimezone', 'timezone' ],
+			[ 'getPostTypes', 'postTypes' ],
+			[ 'getKeyMetricsSetupCompletedBy', 'keyMetricsSetupCompletedBy' ],
+			[ 'getKeyMetricsSetupNew', 'keyMetricsSetupNew' ],
 			[ 'isUsingProxy', 'usingProxy' ],
 			[ 'isAMP', 'ampMode' ],
 			[ 'isPrimaryAMP', 'ampMode' ],
 			[ 'isSecondaryAMP', 'ampMode' ],
 			[ 'isWebStoriesActive', 'webStoriesActive' ],
-		] )( `%s`, ( selector, infoKey ) => {
+			[ 'getProductPostType', 'productPostType' ],
+			[ 'isKeyMetricsSetupCompleted', 'keyMetricsSetupCompletedBy' ],
+			[ 'getConsentModeRegions', 'consentModeRegions' ],
+			[ 'isMultisite', 'isMultisite' ],
+		] )( '%s', ( selector, infoKey ) => {
 			it( 'uses a resolver to load site info then returns the info when this specific selector is used', async () => {
 				global[ baseInfoVar ] = baseInfo;
 				global[ entityInfoVar ] = entityInfo;
@@ -274,6 +439,8 @@ describe( 'core/site site info', () => {
 				expect( global[ entityInfoVar ] ).toEqual( undefined );
 
 				const result = registry.select( CORE_SITE )[ selector ]();
+
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
 
 				expect( result ).toEqual( undefined );
 				expect( console ).toHaveErrored();
@@ -314,6 +481,8 @@ describe( 'core/site site info', () => {
 				expect( global[ entityInfoVar ] ).toEqual( undefined );
 
 				const result = registry.select( CORE_SITE ).isAMP();
+
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
 
 				expect( result ).toEqual( undefined );
 				expect( console ).toHaveErrored();
@@ -411,6 +580,62 @@ describe( 'core/site site info', () => {
 			} );
 		} );
 
+		describe( 'getAdminSettingsURL', () => {
+			it( 'uses a resolver to load site info, then returns settings URL if set', async () => {
+				global[ baseInfoVar ] = baseInfo;
+				global[ entityInfoVar ] = entityInfo;
+
+				registry.select( CORE_SITE ).getAdminSettingsURL();
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
+
+				const adminSettingsURL = registry
+					.select( CORE_SITE )
+					.getAdminSettingsURL();
+
+				expect( adminSettingsURL ).toContain( '/options-general.php' );
+			} );
+
+			it( 'returns admin settings URL containing "options-general.php" when it is single site', async () => {
+				await registry
+					.dispatch( CORE_SITE )
+					.receiveSiteInfo( baseInfo );
+
+				const adminSettingsURL = registry
+					.select( CORE_SITE )
+					.getAdminSettingsURL();
+
+				expect( adminSettingsURL ).toContain( 'options-general.php' );
+			} );
+
+			it( 'returns admin settings URL containing "network/settings.php" for multisite setups', async () => {
+				const baseInfoMultisite = { ...baseInfo, isMultisite: true };
+
+				await registry
+					.dispatch( CORE_SITE )
+					.receiveSiteInfo( baseInfoMultisite );
+
+				const adminSettingsURL = registry
+					.select( CORE_SITE )
+					.getAdminSettingsURL();
+
+				expect( adminSettingsURL ).toContain( 'network/settings.php' );
+			} );
+
+			it( 'returns undefined if site info is not resolved', async () => {
+				expect( global[ baseInfoVar ] ).toEqual( undefined );
+				expect( global[ entityInfoVar ] ).toEqual( undefined );
+
+				const adminSettingsURL = registry
+					.select( CORE_SITE )
+					.getAdminSettingsURL();
+
+				await untilResolved( registry, CORE_SITE ).getSiteInfo();
+
+				expect( adminSettingsURL ).toBeUndefined();
+				expect( console ).toHaveErrored();
+			} );
+		} );
+
 		describe( 'getSiteURLPermutations', () => {
 			it( 'should correctly process regular URL', () => {
 				provideSiteInfo( registry, {
@@ -470,6 +695,64 @@ describe( 'core/site site info', () => {
 					'https://www.example.com/subsite',
 					'http://www.example.com/subsite',
 				] );
+			} );
+		} );
+
+		describe( 'hasMinimumWordPressVersion', () => {
+			it( 'should throw an error if the `minimumWPVersion` parameter is missing', () => {
+				provideSiteInfo( registry );
+
+				expect( () =>
+					registry.select( CORE_SITE ).hasMinimumWordPressVersion()
+				).toThrow( 'minimumWPVersion is required.' );
+			} );
+
+			it( 'should return `undefined` if the `version` property is not available', () => {
+				provideSiteInfo( registry );
+
+				expect(
+					registry
+						.select( CORE_SITE )
+						.hasMinimumWordPressVersion( '5.2' )
+				).toBeUndefined();
+			} );
+
+			it( 'should return `false` if the WordPress version is lesser than the provided version', () => {
+				provideSiteInfo( registry, {
+					wpVersion: {
+						major: 5,
+						minor: 0,
+						version: '5.0.0',
+					},
+				} );
+
+				expect(
+					registry
+						.select( CORE_SITE )
+						.hasMinimumWordPressVersion( '5.2' )
+				).toBe( false );
+			} );
+
+			it( 'should return `true` if the WordPress version is the same or higher than the provided version', () => {
+				provideSiteInfo( registry, {
+					wpVersion: {
+						major: 5,
+						minor: 2,
+						version: '5.2.0',
+					},
+				} );
+
+				expect(
+					registry
+						.select( CORE_SITE )
+						.hasMinimumWordPressVersion( '5.2' )
+				).toBe( true );
+
+				expect(
+					registry
+						.select( CORE_SITE )
+						.hasMinimumWordPressVersion( '5.1' )
+				).toBe( true );
 			} );
 		} );
 	} );

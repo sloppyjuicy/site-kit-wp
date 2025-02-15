@@ -20,15 +20,19 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import isPlainObject from 'lodash/isPlainObject';
-import isEqual from 'lodash/isEqual';
+import { isPlainObject, isEqual, pick } from 'lodash';
 
 /**
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
-import { createStrictSelect } from './utils';
+import {
+	commonActions,
+	createRegistrySelector,
+	commonStore,
+	combineStores,
+} from 'googlesitekit-data';
+import { createStrictSelect, createValidationSelector } from './utils';
 import {
 	camelCaseToPascalCase,
 	camelCaseToConstantCase,
@@ -36,7 +40,6 @@ import {
 import { createFetchStore } from './create-fetch-store';
 import { actions as errorStoreActions } from '../data/create-error-store';
 
-const { createRegistrySelector } = Data;
 // Get access to error store action creators.
 // If the parent store doesn't include the error store,
 // yielded error actions will be a no-op.
@@ -59,15 +62,18 @@ const ROLLBACK_SETTINGS = 'ROLLBACK_SETTINGS';
  * while the fourth defines the names of the sub-settings to support.
  *
  * @since 1.6.0
+ * @since 1.129.0 Added haveSettingsChanged optional paramter.
  * @private
  *
- * @param {string} type                 The data to access. One of 'core' or 'modules'.
- * @param {string} identifier           The data identifier, eg. a module slug like 'search-console'.
- * @param {string} datapoint            The endpoint to request data from, e.g. 'settings'.
- * @param {Object} options              Optional. Options to consider for the store.
- * @param {number} options.storeName    Store name to use. Default is '{type}/{identifier}'.
- * @param {Array}  options.settingSlugs List of the slugs that are part of the settings object
- *                                      handled by the respective API endpoint.
+ * @param {string}        type                                  The data to access. One of 'core' or 'modules'.
+ * @param {string}        identifier                            The data identifier, eg. a module slug like 'search-console'.
+ * @param {string}        datapoint                             The endpoint to request data from, e.g. 'settings'.
+ * @param {Object}        options                               Optional. Options to consider for the store.
+ * @param {Array}         [options.ownedSettingsSlugs]          Optional. List of "owned settings" for this module, if they exist.
+ * @param {number}        [options.storeName]                   Store name to use. Default is '{type}/{identifier}'.
+ * @param {Array}         [options.settingSlugs]                List of the slugs that are part of the settings object handled by the respective API endpoint.
+ * @param {Object}        [options.initialSettings]             Optional. An initial set of settings as key-value pairs.
+ * @param {Function|null} [options.validateHaveSettingsChanged] Optional. Custom callback to determine if settings have changed.
  * @return {Object} The settings store object, with additional `STORE_NAME` and
  *                  `initialState` properties.
  */
@@ -75,7 +81,13 @@ export const createSettingsStore = (
 	type,
 	identifier,
 	datapoint,
-	{ storeName = undefined, settingSlugs = [] } = {}
+	{
+		ownedSettingsSlugs = undefined,
+		storeName = undefined,
+		settingSlugs = [],
+		initialSettings = undefined,
+		validateHaveSettingsChanged = makeDefaultHaveSettingsChanged(),
+	} = {}
 ) => {
 	invariant( type, 'type is required.' );
 	invariant( identifier, 'identifier is required.' );
@@ -84,7 +96,8 @@ export const createSettingsStore = (
 	const STORE_NAME = storeName || `${ type }/${ identifier }`;
 
 	const initialState = {
-		settings: undefined,
+		ownedSettingsSlugs,
+		settings: initialSettings,
 		savedSettings: undefined,
 	};
 
@@ -188,17 +201,15 @@ export const createSettingsStore = (
 		 * @return {Object} Response and error, if any.
 		 */
 		*saveSettings() {
-			const registry = yield Data.commonActions.getRegistry();
+			const registry = yield commonActions.getRegistry();
 
 			yield clearError( 'saveSettings', [] );
 
 			const values = registry.select( STORE_NAME ).getSettings();
-			const {
-				response,
-				error,
-			} = yield fetchSaveSettingsStore.actions.fetchSaveSettings(
-				values
-			);
+			const { response, error } =
+				yield fetchSaveSettingsStore.actions.fetchSaveSettings(
+					values
+				);
 			if ( error ) {
 				// Store error manually since saveSettings signature differs from fetchSaveSettings.
 				yield receiveError( error, 'saveSettings', [] );
@@ -245,7 +256,7 @@ export const createSettingsStore = (
 
 	const resolvers = {
 		*getSettings() {
-			const registry = yield Data.commonActions.getRegistry();
+			const registry = yield commonActions.getRegistry();
 			const existingSettings = registry
 				.select( STORE_NAME )
 				.getSettings();
@@ -256,7 +267,27 @@ export const createSettingsStore = (
 		},
 	};
 
+	const {
+		safeSelector: haveSettingsChanged,
+		dangerousSelector: __dangerousHaveSettingsChanged,
+	} = createValidationSelector( validateHaveSettingsChanged );
+
 	const selectors = {
+		/**
+		 * Indicates whether the current settings have changed from what is saved.
+		 *
+		 * @since 1.6.0
+		 * @since 1.77.0 Added ability to filter settings using `keys` argument.
+		 * @since 1.129.0 Changed the approach to use validateHaveSettingsChanged callback.
+		 * @since 1.131.0 Updated implementation to use safeSelector and dangerousSelector returned from createValidationSelector.
+		 *
+		 * @param {Object}     state Data store's state.
+		 * @param {Array|null} keys  Settings keys to check; if not provided, all settings are checked.
+		 * @return {boolean} True if the settings have changed, false otherwise.
+		 */
+		haveSettingsChanged,
+		__dangerousHaveSettingsChanged,
+
 		/**
 		 * Gets the current settings.
 		 *
@@ -272,17 +303,24 @@ export const createSettingsStore = (
 		},
 
 		/**
-		 * Indicates whether the current settings have changed from what is saved.
+		 * Indicates whether the provided setting has changed from what is saved.
 		 *
-		 * @since 1.6.0
+		 * @since 1.72.0
 		 *
-		 * @param {Object} state Data store's state.
+		 * @param {Object} state   Data store's state.
+		 * @param {string} setting The setting we want to check for saved changes.
 		 * @return {boolean} True if the settings have changed, false otherwise.
 		 */
-		haveSettingsChanged( state ) {
+		hasSettingChanged( state, setting ) {
+			invariant( setting, 'setting is required.' );
+
 			const { settings, savedSettings } = state;
 
-			return ! isEqual( settings, savedSettings );
+			if ( ! settings || ! savedSettings ) {
+				return false;
+			}
+
+			return ! isEqual( settings[ setting ], savedSettings[ setting ] );
 		},
 
 		/**
@@ -302,6 +340,35 @@ export const createSettingsStore = (
 				Boolean
 			);
 		},
+
+		/**
+		 * Gets the owned settings slugs for this module.
+		 *
+		 * @since 1.77.0
+		 *
+		 * @param {Object} state Data store's state.
+		 * @return {Array|null} The array of owned settings slugs for this module if they exist. Returns `null` if no owned settings slugs exist.
+		 */
+		getOwnedSettingsSlugs: ( state ) => {
+			return state.ownedSettingsSlugs;
+		},
+
+		/**
+		 * Returns `true` if a module's "own settings" have changed; `false` if not.
+		 *
+		 * @since 1.77.0
+		 *
+		 * @param {Object} state Data store's state.
+		 * @return {boolean} `true` if the module's "own settings" have changed; `false` if not.
+		 */
+		haveOwnedSettingsChanged: createRegistrySelector( ( select ) => () => {
+			const ownedSettingsSlugsToCheck =
+				select( STORE_NAME ).getOwnedSettingsSlugs();
+
+			return select( STORE_NAME ).haveSettingsChanged(
+				ownedSettingsSlugsToCheck
+			);
+		} ),
 	};
 
 	// Define individual actions, selectors and related for sub-settings.
@@ -357,8 +424,8 @@ export const createSettingsStore = (
 		);
 	} );
 
-	const store = Data.combineStores(
-		Data.commonStore,
+	const store = combineStores(
+		commonStore,
 		fetchGetSettingsStore,
 		fetchSaveSettingsStore,
 		{
@@ -401,6 +468,24 @@ export function makeDefaultSubmitChanges( slug, storeName ) {
 }
 
 /**
+ * Creates a default rollbackChanges control function.
+ *
+ * @since 1.45.0
+ *
+ * @param {string} storeName Datastore slug.
+ * @return {Function} Control function to rollback settings changes.
+ */
+export function makeDefaultRollbackChanges( storeName ) {
+	return ( { select, dispatch } ) => {
+		if ( select( storeName ).haveSettingsChanged() ) {
+			return dispatch( storeName ).rollbackSettings();
+		}
+
+		return {};
+	};
+}
+
+/**
  * Creates a default canSubmitChanges function.
  *
  * @since 1.21.0
@@ -411,11 +496,38 @@ export function makeDefaultSubmitChanges( slug, storeName ) {
 export function makeDefaultCanSubmitChanges( storeName ) {
 	return ( select ) => {
 		const strictSelect = createStrictSelect( select );
-		const { haveSettingsChanged, isDoingSubmitChanges } = strictSelect(
-			storeName
-		);
+		const { haveSettingsChanged, isDoingSubmitChanges } =
+			strictSelect( storeName );
 
 		invariant( ! isDoingSubmitChanges(), INVARIANT_DOING_SUBMIT_CHANGES );
 		invariant( haveSettingsChanged(), INVARIANT_SETTINGS_NOT_CHANGED );
+	};
+}
+
+/**
+ * Creates Default haveSettingsChanged.
+ *
+ * @since 1.129.0
+ *
+ * @return {boolean} True if the settings have changed, false otherwise.
+ */
+export function makeDefaultHaveSettingsChanged() {
+	return ( select, state, keys ) => {
+		const { settings, savedSettings } = state;
+
+		if ( keys ) {
+			invariant(
+				! isEqual(
+					pick( settings, keys ),
+					pick( savedSettings, keys )
+				),
+				INVARIANT_SETTINGS_NOT_CHANGED
+			);
+		}
+
+		invariant(
+			! isEqual( settings, savedSettings ),
+			INVARIANT_SETTINGS_NOT_CHANGED
+		);
 	};
 }

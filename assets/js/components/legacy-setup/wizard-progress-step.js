@@ -20,7 +20,6 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
-import React from 'react';
 import classnames from 'classnames';
 
 /**
@@ -31,20 +30,13 @@ import { Component } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import ExclamationIcon from '../../../svg/exclamation.svg';
-import CheckIcon from '../../../svg/check.svg';
+import ExclamationIcon from '../../../svg/icons/exclamation.svg';
+import CheckIcon from '../../../svg/icons/check.svg';
 
 class WizardProgressStep extends Component {
 	render() {
-		const {
-			currentStep,
-			step,
-			title,
-			status,
-			warning,
-			error,
-			stepKey,
-		} = this.props;
+		const { currentStep, step, title, status, warning, error, stepKey } =
+			this.props;
 
 		let statusClass = status;
 		if ( warning ) {
@@ -74,7 +66,8 @@ class WizardProgressStep extends Component {
 					`googlesitekit-wizard-progress-step--${ step }`,
 					`googlesitekit-wizard-progress-step--${ stepKey }`,
 					{
-						'googlesitekit-wizard-progress-step--current': currentStep,
+						'googlesitekit-wizard-progress-step--current':
+							currentStep,
 					}
 				) }
 			>

@@ -22,46 +22,40 @@
 import API from 'googlesitekit-api';
 import {
 	createTestRegistry,
+	muteFetch,
+	provideUserAuthentication,
 	subscribeUntil,
-	unsubscribeFromAll,
+	untilResolved,
 } from '../../../../../tests/js/utils';
-import { waitFor } from '../../../../../tests/js/test-utils';
+import { surveyTriggerEndpoint } from '../../../../../tests/js/mock-survey-endpoints';
 import { CORE_USER } from './constants';
 
 describe( 'core/user user-input-settings', () => {
 	let registry;
 	let store;
 
-	const coreUserInputSettingsEndpointRegExp = /^\/google-site-kit\/v1\/core\/user\/data\/user-input-settings/;
+	const coreUserInputSettingsEndpointRegExp = new RegExp(
+		'^/google-site-kit/v1/core/user/data/user-input-settings'
+	);
 	const coreUserInputSettingsExpectedResponse = {
-		goals: {
-			values: [ 'goal1', 'goal2' ],
+		purpose: {
+			values: [ 'purpose1' ],
 			scope: 'site',
-		},
-		helpNeeded: {
-			values: [ 'no' ],
-			scope: 'site',
-		},
-		searchTerms: {
-			values: [ 'keyword1' ],
-			scope: 'site',
-		},
-		role: {
-			values: [ 'admin' ],
-			scope: 'user',
 		},
 		postFrequency: {
 			values: [ 'daily' ],
 			scope: 'user',
 		},
+		goals: {
+			values: [ 'goal1', 'goal2' ],
+			scope: 'user',
+		},
 	};
 	const coreUserInputSettings = {
-		goals: coreUserInputSettingsExpectedResponse.goals.values,
-		helpNeeded: coreUserInputSettingsExpectedResponse.helpNeeded.values,
-		searchTerms: coreUserInputSettingsExpectedResponse.searchTerms.values,
-		role: coreUserInputSettingsExpectedResponse.role.values,
+		purpose: coreUserInputSettingsExpectedResponse.purpose.values,
 		postFrequency:
 			coreUserInputSettingsExpectedResponse.postFrequency.values,
+		goals: coreUserInputSettingsExpectedResponse.goals.values,
 	};
 
 	beforeAll( () => {
@@ -71,15 +65,11 @@ describe( 'core/user user-input-settings', () => {
 	beforeEach( () => {
 		registry = createTestRegistry();
 		store = registry.stores[ CORE_USER ].store;
-		registry.dispatch( CORE_USER ).receiveUserInputState( 'completed' );
+		registry.dispatch( CORE_USER ).receiveIsUserInputCompleted( true );
 	} );
 
 	afterAll( () => {
 		API.setUsingCache( true );
-	} );
-
-	afterEach( () => {
-		unsubscribeFromAll( registry );
 	} );
 
 	describe( 'actions', () => {
@@ -172,6 +162,205 @@ describe( 'core/user user-input-settings', () => {
 				).toMatchObject( response );
 				expect( console ).toHaveErrored();
 			} );
+
+			it( 'should trigger survey if there is no error and answers conatin "Other"', async () => {
+				provideUserAuthentication( registry );
+				registry.dispatch( CORE_USER ).receiveGetSurveyTimeouts( [] );
+
+				const settingsResponse = {
+					...coreUserInputSettingsExpectedResponse,
+					goals: {
+						...coreUserInputSettingsExpectedResponse.goals,
+						values: [ 'other' ],
+					},
+				};
+				const settings = {
+					...coreUserInputSettings,
+					goals: [ 'other' ],
+				};
+
+				fetchMock.postOnce( coreUserInputSettingsEndpointRegExp, {
+					body: settingsResponse,
+					status: 200,
+				} );
+				muteFetch( surveyTriggerEndpoint );
+
+				await registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [ 'other' ] );
+
+				await registry.dispatch( CORE_USER ).saveUserInputSettings();
+
+				expect( fetchMock ).toHaveFetched(
+					coreUserInputSettingsEndpointRegExp,
+					{
+						body: {
+							data: {
+								settings,
+							},
+						},
+					}
+				);
+
+				expect(
+					registry.select( CORE_USER ).getUserInputSettings()
+				).toEqual( settingsResponse );
+
+				expect( fetchMock ).toHaveFetched( surveyTriggerEndpoint, {
+					body: {
+						data: {
+							triggerID: 'userInput_answered_other__goals',
+						},
+					},
+				} );
+
+				expect( fetchMock ).toHaveFetchedTimes( 2 );
+			} );
+
+			it( 'should not trigger survey if there is an error, even though answers conatin "Other"', async () => {
+				const settings = {
+					purpose: [ 'other' ],
+					...coreUserInputSettings,
+				};
+
+				const args = [ settings ];
+				const response = {
+					code: 'internal_server_error',
+					message: 'Internal server error',
+					data: { status: 500 },
+				};
+
+				fetchMock.post( coreUserInputSettingsEndpointRegExp, {
+					body: response,
+					status: 500,
+				} );
+
+				await registry
+					.dispatch( CORE_USER )
+					.saveUserInputSettings( ...args );
+
+				expect(
+					registry
+						.select( CORE_USER )
+						.getErrorForAction( 'saveUserInputSettings', args )
+				).toMatchObject( response );
+				expect( console ).toHaveErrored();
+
+				expect( fetchMock ).not.toHaveFetched( surveyTriggerEndpoint );
+			} );
+		} );
+
+		describe( 'resetUserInputSettings', () => {
+			it( 'should correctly reset user input settings', () => {
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [
+						'goal3',
+						'goal4',
+						'goal5',
+						'goal6',
+					] );
+
+				registry.dispatch( CORE_USER ).resetUserInputSettings();
+
+				const settings = registry
+					.select( CORE_USER )
+					.getUserInputSettings();
+
+				expect( settings ).toEqual(
+					coreUserInputSettingsExpectedResponse
+				);
+			} );
+		} );
+
+		describe( 'maybeTriggerUserInputSurvey', () => {
+			beforeEach( () => {
+				provideUserAuthentication( registry );
+			} );
+
+			it( 'should bail if no answers contain "Other"', async () => {
+				await registry
+					.dispatch( CORE_USER )
+					.maybeTriggerUserInputSurvey();
+
+				expect( fetchMock ).not.toHaveFetched( surveyTriggerEndpoint );
+			} );
+
+			it( 'should trigger survey if answers contain "Other"', async () => {
+				muteFetch( surveyTriggerEndpoint );
+
+				registry.dispatch( CORE_USER ).receiveGetSurveyTimeouts( [] );
+
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [ 'other' ] );
+
+				await registry
+					.dispatch( CORE_USER )
+					.maybeTriggerUserInputSurvey();
+
+				expect( fetchMock ).toHaveFetched( surveyTriggerEndpoint, {
+					body: {
+						data: { triggerID: 'userInput_answered_other__goals' },
+					},
+				} );
+			} );
+
+			it.each( [
+				[ 'purpose', 'Purpose' ],
+				[ 'postFrequency', 'Post Frequency' ],
+				[ 'goals', 'Goals' ],
+				[ 'purpose_postFrequency', 'Purpose, Post Frequency' ],
+				[ 'purpose_goals', 'Purpose, Goals' ],
+				[ 'postFrequency_goals', 'Post Frequency, Goals' ],
+				[
+					'purpose_postFrequency_goals',
+					'Purpose, Post Frequency, Goals',
+				],
+			] )(
+				'survey triggerID should be userInput_answered_other__%s when "Other" is answered for the following questions: %s',
+				async ( questions ) => {
+					const questionsArray = questions.split( '_' );
+
+					muteFetch( surveyTriggerEndpoint );
+
+					registry
+						.dispatch( CORE_USER )
+						.receiveGetSurveyTimeouts( [] );
+
+					await Promise.all(
+						questionsArray.map( async ( question ) => {
+							await registry
+								.dispatch( CORE_USER )
+								.setUserInputSetting( question, [ 'other' ] );
+						} )
+					);
+
+					registry
+						.dispatch( CORE_USER )
+						.maybeTriggerUserInputSurvey();
+
+					await subscribeUntil( registry, () =>
+						registry
+							.select( CORE_USER )
+							.hasFinishedResolution( 'getSurveyTimeouts' )
+					);
+
+					await subscribeUntil( registry, () =>
+						registry
+							.select( CORE_USER )
+							.hasFinishedResolution( 'getUserInputSettings' )
+					);
+
+					expect( fetchMock ).toHaveFetched( surveyTriggerEndpoint, {
+						body: {
+							data: {
+								triggerID: `userInput_answered_other__${ questions }`,
+							},
+						},
+					} );
+				}
+			);
 		} );
 	} );
 
@@ -186,7 +375,10 @@ describe( 'core/user user-input-settings', () => {
 				const { getUserInputSettings } = registry.select( CORE_USER );
 
 				expect( getUserInputSettings() ).toBeUndefined();
-				await waitFor( () => getUserInputSettings() !== undefined );
+				await untilResolved(
+					registry,
+					CORE_USER
+				).getUserInputSettings();
 
 				const settings = getUserInputSettings();
 				expect( settings ).toEqual(
@@ -307,6 +499,154 @@ describe( 'core/user user-input-settings', () => {
 					);
 				}
 			);
+		} );
+
+		describe( 'haveUserInputSettingsChanged', () => {
+			beforeEach( () => {
+				registry
+					.dispatch( CORE_USER )
+					.receiveGetUserInputSettings(
+						coreUserInputSettingsExpectedResponse
+					);
+			} );
+
+			it( 'informs whether client-side settings differ from server-side ones', () => {
+				// False after setting to the same values as original, i.e. unchanged settings.
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [ 'goal1', 'goal2' ] );
+
+				expect(
+					registry.select( CORE_USER ).haveUserInputSettingsChanged()
+				).toBe( false );
+			} );
+
+			it( 'should return false if settings are unchanged', () => {
+				expect(
+					registry.select( CORE_USER ).haveUserInputSettingsChanged()
+				).toBe( false );
+			} );
+
+			it( 'compares all keys when keys argument is not supplied', () => {
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [
+						'goal3',
+						'goal4',
+						'goal5',
+						'goal6',
+					] );
+
+				expect(
+					registry.select( CORE_USER ).haveUserInputSettingsChanged()
+				).toBe( true );
+			} );
+
+			it.each( [
+				[
+					'should return true if the changed key is supplied',
+					[ 'goals' ],
+					true,
+				],
+				[
+					'should return false if an unchanged key is supplied',
+					[ 'purpose' ],
+					false,
+				],
+				[
+					'should return true if the keys argument array contains a changed key',
+					[ 'goals', 'purpose' ],
+					true,
+				],
+				[
+					'should return false if an empty keys argument is supplied',
+					[],
+					false,
+				],
+			] )(
+				'compares select keys when keys argument is supplied - %s',
+				( _, keys, expected ) => {
+					registry
+						.dispatch( CORE_USER )
+						.setUserInputSetting( 'goals', [
+							'goal3',
+							'goal4',
+							'goal5',
+							'goal6',
+						] );
+
+					expect(
+						registry
+							.select( CORE_USER )
+							.haveUserInputSettingsChanged( keys )
+					).toBe( expected );
+				}
+			);
+		} );
+
+		describe( 'hasUserInputSettingChanged', () => {
+			beforeEach( () => {
+				registry
+					.dispatch( CORE_USER )
+					.receiveGetUserInputSettings(
+						coreUserInputSettingsExpectedResponse
+					);
+			} );
+
+			it( 'informs whether client-side specific setting differ from server-side ones', () => {
+				// False after setting to the same values as original, i.e. unchanged settings.
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [ 'goal1', 'goal2' ] );
+
+				expect(
+					registry
+						.select( CORE_USER )
+						.hasUserInputSettingChanged( 'goals' )
+				).toBe( false );
+			} );
+
+			it( 'should return false if settings are unchanged', () => {
+				expect(
+					registry
+						.select( CORE_USER )
+						.hasUserInputSettingChanged( 'goals' )
+				).toBe( false );
+			} );
+
+			it( 'should return true if a changed key is supplied', () => {
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [
+						'goal3',
+						'goal4',
+						'goal5',
+						'goal6',
+					] );
+
+				expect(
+					registry
+						.select( CORE_USER )
+						.hasUserInputSettingChanged( 'goals' )
+				).toBe( true );
+			} );
+
+			it( 'should return false if an unchanged key is supplied', () => {
+				registry
+					.dispatch( CORE_USER )
+					.setUserInputSetting( 'goals', [
+						'goal3',
+						'goal4',
+						'goal5',
+						'goal6',
+					] );
+
+				expect(
+					registry
+						.select( CORE_USER )
+						.hasUserInputSettingChanged( 'purpose' )
+				).toBe( false );
+			} );
 		} );
 	} );
 } );

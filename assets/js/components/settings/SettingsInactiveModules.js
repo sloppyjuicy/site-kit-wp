@@ -19,66 +19,49 @@
 /**
  * WordPress dependencies
  */
-import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
 import { CORE_MODULES } from '../../googlesitekit/modules/datastore/constants';
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import Layout from '../layout/Layout';
-import Notification from '../legacy-notifications/notification';
+import BannerNotification from '../notifications/BannerNotification';
 import SetupModule from './SetupModule';
 import { Cell, Grid, Row } from '../../material-components';
-import AwardSVG from '../../../svg/award.svg';
-const { useSelect } = Data;
+import AwardSVG from '../../../svg/graphics/award.svg';
 
-const SettingsInactiveModules = () => {
-	// We store `initialInactiveSlugs` separately to avoid
-	// layout shifts when activating a module as it would otherwise
-	// cause the activated module to be removed upon activation.
-	const [ initialInactiveSlugs, setInitialInactiveSlugs ] = useState();
+export default function SettingsInactiveModules() {
 	const modules = useSelect( ( select ) =>
 		select( CORE_MODULES ).getModules()
 	);
 
-	useEffect( () => {
-		// Only set initialInactiveSlugs once, as soon as modules are available.
-		if ( ! modules || initialInactiveSlugs !== undefined ) {
-			return;
-		}
-
-		const inactiveSlugs = Object.keys( modules ).filter(
-			( slug ) => ! modules[ slug ].active
-		);
-
-		setInitialInactiveSlugs( inactiveSlugs );
-	}, [ modules, initialInactiveSlugs ] );
-
-	if ( ! initialInactiveSlugs ) {
+	if ( ! modules ) {
 		return null;
 	}
 
-	const inactiveModules = initialInactiveSlugs
+	const inactiveModules = Object.keys( modules )
 		.map( ( slug ) => modules[ slug ] )
-		.filter( ( module ) => ! module.internal )
+		.filter( ( { internal, active } ) => ! internal && ! active )
 		.sort( ( a, b ) => a.order - b.order );
+
 	if ( inactiveModules.length === 0 ) {
 		return (
-			<Notification
+			<BannerNotification
 				id="no-more-modules"
 				title={ __(
 					'Congrats, you’ve connected all services!',
 					'google-site-kit'
 				) }
 				description={ __(
-					'We’re working on adding new services to Site Kit by Google all the time, so please check back in the future.',
+					'We’re working on adding new services to Site Kit by Google all the time, so please check back in the future',
 					'google-site-kit'
 				) }
 				format="small"
 				SmallImageSVG={ AwardSVG }
 				type="win-success"
+				rounded
 			/>
 		);
 	}
@@ -90,16 +73,17 @@ const SettingsInactiveModules = () => {
 				'Connect More Services to Gain More Insights',
 				'google-site-kit'
 			) }
+			rounded
 			relative
 		>
 			<Grid>
 				<Row>
-					{ inactiveModules.map( ( module ) => (
-						<Cell key={ module.slug } size={ 4 }>
+					{ inactiveModules.map( ( { slug, name, description } ) => (
+						<Cell key={ slug } size={ 4 }>
 							<SetupModule
-								slug={ module.slug }
-								name={ module.name }
-								description={ module.description }
+								slug={ slug }
+								name={ name }
+								description={ description }
 							/>
 						</Cell>
 					) ) }
@@ -107,6 +91,4 @@ const SettingsInactiveModules = () => {
 			</Grid>
 		</Layout>
 	);
-};
-
-export default SettingsInactiveModules;
+}

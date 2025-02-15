@@ -1,15 +1,38 @@
 /**
+ * Site Kit by Google, Copyright 2023 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * External dependencies
+ */
+import { once } from 'lodash';
+
+/**
  * Internal dependencies
  */
-import createEnableTracking from './createEnableTracking';
+import createInitializeSnippet from './createInitializeSnippet';
 import createTrackEvent from './createTrackEvent';
 
 const DEFAULT_CONFIG = {
-	isFirstAdmin: false,
+	activeModules: [],
+	isAuthenticated: false,
+	referenceSiteURL: '',
 	trackingEnabled: false,
 	trackingID: '',
-	referenceSiteURL: '',
 	userIDHash: '',
+	userRoles: [],
 };
 
 /**
@@ -37,15 +60,41 @@ export default function createTracking(
 			.toString()
 			.replace( /\/+$/, '' );
 	}
+	const initializeSnippet = createInitializeSnippet(
+		config,
+		dataLayerTarget
+	);
+
+	const trackEvent = createTrackEvent(
+		config,
+		dataLayerTarget,
+		initializeSnippet,
+		_global
+	);
+
+	const onceTrackedEventsMap = {};
+
+	const trackEventOnce = ( ...params ) => {
+		const key = JSON.stringify( params );
+		if ( ! onceTrackedEventsMap[ key ] ) {
+			onceTrackedEventsMap[ key ] = once( trackEvent );
+		}
+
+		onceTrackedEventsMap[ key ]( ...params );
+	};
 
 	return {
-		enableTracking: createEnableTracking( config, dataLayerTarget ),
+		enableTracking: function enableTracking() {
+			config.trackingEnabled = true;
+		},
 		disableTracking: function disableTracking() {
 			config.trackingEnabled = false;
 		},
+		initializeSnippet,
 		isTrackingEnabled: function isTrackingEnabled() {
 			return !! config.trackingEnabled;
 		},
-		trackEvent: createTrackEvent( config, dataLayerTarget, _global ),
+		trackEvent,
+		trackEventOnce,
 	};
 }

@@ -19,11 +19,10 @@
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { ProgressBar } from 'googlesitekit-components';
 import { MODULES_ADSENSE } from '../../datastore/constants';
 import SettingsForm from './SettingsForm';
-import ProgressBar from '../../../../components/ProgressBar';
-const { useSelect } = Data;
 
 export default function SettingsEdit() {
 	const isDoingSubmitChanges = useSelect( ( select ) =>

@@ -20,20 +20,19 @@
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import { combineStores, commonStore } from 'googlesitekit-data';
 import {
 	createTestRegistry,
 	muteFetch,
-	unsubscribeFromAll,
 	untilResolved,
 } from '../../../../tests/js/utils';
 import { createExistingTagStore } from './create-existing-tag-store';
 import { CORE_SITE } from '../datastore/site/constants';
 
 const TEST_STORE = 'test/store';
-const tagMatchers = [ /<test-store-tag value="([^\"]+)" \/>/ ];
+const tagMatchers = [ new RegExp( '<test-store-tag value="([^"]+)" />' ) ];
 const generateHTMLWithTag = ( tag ) =>
-	`<html><body><test-store-tag value="${ tag }" \/></body></html>`;
+	`<html><body><test-store-tag value="${ tag }" /></body></html>`;
 
 describe( 'createExistingTagStore store', () => {
 	let registry;
@@ -47,8 +46,8 @@ describe( 'createExistingTagStore store', () => {
 		registry = createTestRegistry();
 		store = registry.registerStore(
 			TEST_STORE,
-			Data.combineStores(
-				Data.commonStore,
+			combineStores(
+				commonStore,
 				createExistingTagStore( {
 					storeName: TEST_STORE,
 					tagMatchers,
@@ -63,10 +62,6 @@ describe( 'createExistingTagStore store', () => {
 
 	afterAll( () => {
 		API.setUsingCache( true );
-	} );
-
-	afterEach( () => {
-		unsubscribeFromAll( registry );
 	} );
 
 	describe( 'actions', () => {
@@ -121,30 +116,6 @@ describe( 'createExistingTagStore store', () => {
 					.dispatch( TEST_STORE )
 					.receiveGetExistingTag( existingTag );
 				expect( store.getState().existingTag ).toBe( existingTag );
-			} );
-		} );
-
-		describe( 'waitForExistingTag', () => {
-			it( 'supports asynchronous waiting for tag', async () => {
-				const expectedTag = 'test-tag-value';
-				fetchMock.getOnce(
-					{ query: { tagverify: '1' } },
-					{ body: generateHTMLWithTag( expectedTag ), status: 200 }
-				);
-
-				const promise = registry
-					.dispatch( TEST_STORE )
-					.waitForExistingTag();
-				expect( registry.select( TEST_STORE ).getExistingTag() ).toBe(
-					undefined
-				);
-
-				await promise;
-
-				expect( fetchMock ).toHaveFetchedTimes( 1 );
-				expect( registry.select( TEST_STORE ).getExistingTag() ).toBe(
-					expectedTag
-				);
 			} );
 		} );
 	} );

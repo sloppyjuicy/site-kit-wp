@@ -20,51 +20,74 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import {
+	ThemeProvider,
+	createMuiTheme,
+	// We're using the to avoid `StrictMode` warnings. It's a temporary
+	// workaround until we can upgrade `material-ui/core` to v5+.
+	// See: https://github.com/google/site-kit-wp/issues/5378
+	unstable_createMuiStrictModeTheme, // eslint-disable-line camelcase
+} from '@material-ui/core';
+
+/**
+ * WordPress dependencies
+ */
+import { StrictMode, useState } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import Data, { RegistryProvider } from 'googlesitekit-data';
 import ErrorHandler from '../ErrorHandler';
 import FeaturesProvider from '../FeaturesProvider';
 import { enabledFeatures } from '../../features';
 import PermissionsModal from '../PermissionsModal';
 import RestoreSnapshots from '../RestoreSnapshots';
-import { FeatureToursDesktop } from '../FeatureToursDesktop';
-import { useFeature } from '../../hooks/useFeature';
-import CurrentSurveyPortal from '../surveys/CurrentSurveyPortal';
+import FeatureTours from '../FeatureTours';
+import { Provider as ViewContextProvider } from './ViewContextContext';
+import InViewProvider from '../InViewProvider';
+import { isSiteKitScreen } from '../../util/is-site-kit-screen';
 
 export default function Root( { children, registry, viewContext = null } ) {
-	const userFeedbackEnabled = useFeature( 'userFeedback' );
+	const theme =
+		process.env.NODE_ENV === 'production'
+			? createMuiTheme
+			: unstable_createMuiStrictModeTheme; // eslint-disable-line camelcase
+
+	const [ inViewState ] = useState( {
+		key: 'Root',
+		value: true,
+	} );
 
 	return (
-		<Data.RegistryProvider value={ registry }>
-			<FeaturesProvider value={ enabledFeatures }>
-				<ErrorHandler viewContext={ viewContext }>
-					<RestoreSnapshots>
-						{ children }
-						{ /*
-							TODO: Replace `FeatureToursDesktop` with `FeatureTours`
-							once tour conflicts in smaller viewports are resolved.
-							@see https://github.com/google/site-kit-wp/issues/3003
-						*/ }
-						{ viewContext && (
-							<FeatureToursDesktop viewContext={ viewContext } />
-						) }
-
-						{ userFeedbackEnabled && <CurrentSurveyPortal /> }
-					</RestoreSnapshots>
-					<PermissionsModal />
-				</ErrorHandler>
-			</FeaturesProvider>
-		</Data.RegistryProvider>
+		<StrictMode>
+			<InViewProvider value={ inViewState }>
+				<RegistryProvider value={ registry }>
+					<FeaturesProvider value={ enabledFeatures }>
+						<ViewContextProvider value={ viewContext }>
+							<ThemeProvider theme={ theme() }>
+								<ErrorHandler>
+									<RestoreSnapshots>
+										{ children }
+										{ viewContext && <FeatureTours /> }
+									</RestoreSnapshots>
+									{ isSiteKitScreen( viewContext ) && (
+										<PermissionsModal />
+									) }
+								</ErrorHandler>
+							</ThemeProvider>
+						</ViewContextProvider>
+					</FeaturesProvider>
+				</RegistryProvider>
+			</InViewProvider>
+		</StrictMode>
 	);
 }
 
 Root.propTypes = {
-	children: PropTypes.node.isRequired,
+	children: PropTypes.node,
 	registry: PropTypes.object,
-	viewContext: PropTypes.string,
+	viewContext: PropTypes.string.isRequired,
 };
 
 Root.defaultProps = {

@@ -16,6 +16,5 @@
  * limitations under the License.
  */
 
-export { default as DashboardClicksWidget } from './DashboardClicksWidget';
-export { default as DashboardImpressionsWidget } from './DashboardImpressionsWidget';
 export { default as DashboardPopularKeywordsWidget } from './DashboardPopularKeywordsWidget';
+export { default as SearchFunnelWidgetGA4 } from './SearchFunnelWidgetGA4';

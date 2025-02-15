@@ -25,7 +25,7 @@ import invariant from 'invariant';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import { commonActions, combineStores } from 'googlesitekit-data';
 import { createFetchStore } from './create-fetch-store';
 
 // Actions
@@ -182,7 +182,14 @@ export const createNotificationsStore = (
 
 	const resolvers = {
 		*getNotifications() {
-			yield fetchGetNotificationsStore.actions.fetchGetNotifications();
+			const registry = yield commonActions.getRegistry();
+			const notifications = registry
+				.select( STORE_NAME )
+				.getNotifications();
+
+			if ( ! notifications ) {
+				yield fetchGetNotificationsStore.actions.fetchGetNotifications();
+			}
 		},
 	};
 
@@ -229,7 +236,7 @@ export const createNotificationsStore = (
 		},
 	};
 
-	const store = Data.combineStores( fetchGetNotificationsStore, {
+	const store = combineStores( fetchGetNotificationsStore, {
 		initialState,
 		actions,
 		controls,

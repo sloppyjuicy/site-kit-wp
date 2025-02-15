@@ -25,12 +25,12 @@ import { __ } from '@wordpress/i18n';
  * Internal dependencies
  */
 import {
-	AREA_DASHBOARD_SPEED,
-	AREA_PAGE_DASHBOARD_SPEED,
+	AREA_ENTITY_DASHBOARD_SPEED_PRIMARY,
+	AREA_MAIN_DASHBOARD_SPEED_PRIMARY,
 } from '../../googlesitekit/widgets/default-areas';
 import { SettingsView } from './components/settings';
 import DashboardPageSpeedWidget from './components/dashboard/DashboardPageSpeedWidget';
-import PageSpeedInsightsIcon from '../../../svg/pagespeed-insights.svg';
+import PageSpeedInsightsIcon from '../../../svg/graphics/pagespeed-insights.svg';
 import { MODULES_PAGESPEED_INSIGHTS } from './datastore/constants';
 
 export { registerStore } from './datastore';
@@ -42,7 +42,7 @@ export const registerModule = ( modules ) => {
 		Icon: PageSpeedInsightsIcon,
 		features: [
 			__(
-				'Website performance reports for mobile and desktop',
+				'Website performance reports for mobile and desktop will be disabled',
 				'google-site-kit'
 			),
 		],
@@ -56,7 +56,11 @@ export const registerWidgets = ( widgets ) => {
 			Component: DashboardPageSpeedWidget,
 			width: widgets.WIDGET_WIDTHS.FULL,
 			wrapWidget: false,
+			modules: [ 'pagespeed-insights' ],
 		},
-		[ AREA_DASHBOARD_SPEED, AREA_PAGE_DASHBOARD_SPEED ]
+		[
+			AREA_MAIN_DASHBOARD_SPEED_PRIMARY,
+			AREA_ENTITY_DASHBOARD_SPEED_PRIMARY,
+		]
 	);
 };

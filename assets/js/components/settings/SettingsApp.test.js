@@ -30,11 +30,17 @@ import {
 	fireEvent,
 	createTestRegistry,
 	provideModules,
+	provideSiteInfo,
+	muteFetch,
 } from '../../../../tests/js/test-utils';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
+import { MODULES_ANALYTICS_4 } from '../../modules/analytics-4/datastore/constants';
+import { VIEW_CONTEXT_SETTINGS } from '../../googlesitekit/constants';
 
-const coreUserTrackingSettingsEndpointRegExp = /^\/google-site-kit\/v1\/core\/user\/data\/tracking/;
+const coreUserTrackingSettingsEndpointRegExp = new RegExp(
+	'^/google-site-kit/v1/core/user/data/tracking'
+);
 const coreUserTrackingResponse = { status: 200, body: { enabled: false } };
 
 describe( 'SettingsApp', () => {
@@ -50,24 +56,37 @@ describe( 'SettingsApp', () => {
 		registry
 			.dispatch( CORE_USER )
 			.receiveGetAuthentication( { needsReauthentication: false } );
+		registry.dispatch( CORE_USER ).receiveGetDismissedItems( [] );
 		registry.dispatch( CORE_USER ).receiveConnectURL( 'test-url' );
 		registry
 			.dispatch( CORE_SITE )
 			.receiveGetAdminBarSettings( { enabled: true } );
+		registry
+			.dispatch( CORE_SITE )
+			.receiveGetConsentModeSettings( { enabled: false } );
+		registry.dispatch( CORE_SITE ).receiveGetConsentAPIInfo( {
+			hasConsentAPI: false,
+			wpConsentPlugin: {
+				installed: false,
+				activateURL:
+					'http://example.com/wp-admin/plugins.php?action=activate&plugin=some-plugin',
+				installURL:
+					'http://example.com/wp-admin/update.php?action=install-plugin&plugin=some-plugin',
+			},
+		} );
+
+		provideSiteInfo( registry, {
+			proxySupportLinkURL: 'https://test.com',
+		} );
 
 		provideModules( registry, [
 			{
-				slug: 'analytics',
+				slug: 'analytics-4',
 				active: true,
 				connected: true,
-				SettingsEditComponent: () => (
-					<div data-testid="edit-component">edit</div>
-				),
-			},
-			{
-				slug: 'optimize',
-				active: true,
-				connected: true,
+				SettingsEditComponent() {
+					return <div data-testid="edit-component">edit</div>;
+				},
 			},
 			{
 				slug: 'tagmanager',
@@ -85,12 +104,7 @@ describe( 'SettingsApp', () => {
 				connected: true,
 			},
 		] );
-
-		global._googlesitekitLegacyData.modules.analytics = {
-			...global._googlesitekitLegacyData.modules.analytics,
-			active: true,
-			setupComplete: true,
-		};
+		registry.dispatch( MODULES_ANALYTICS_4 ).receiveGetSettings( {} );
 	} );
 
 	it( 'should switch to "/connected-services" route when corresponding tab is clicked.', async () => {
@@ -99,28 +113,47 @@ describe( 'SettingsApp', () => {
 			coreUserTrackingResponse
 		);
 
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/modules/search-console/data' )
+		);
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/modules/analytics-4/data' )
+		);
+
+		registry.dispatch( CORE_USER ).receiveGetAudienceSettings( {
+			configuredAudiences: null,
+			isAudienceSegmentationWidgetHidden: false,
+		} );
+
 		history.push( '/admin-settings' );
 
-		const { getAllByRole } = render( <SettingsApp />, {
+		const { getAllByRole, waitForRegistry } = render( <SettingsApp />, {
 			history,
 			registry,
+			viewContext: VIEW_CONTEXT_SETTINGS,
 		} );
+		await waitForRegistry();
 
 		fireEvent.click(
 			getAllByRole( 'tab' )[ getTabID( 'connected-services' ) ]
 		);
+
 		expect( global.location.hash ).toEqual( '#/connected-services' );
 	} );
 
 	it( 'should switch to "/connect-more-services" route when corresponding tab is clicked.', async () => {
-		const { getAllByRole } = render( <SettingsApp />, {
+		const { getAllByRole, waitForRegistry } = render( <SettingsApp />, {
 			history,
 			registry,
+			viewContext: VIEW_CONTEXT_SETTINGS,
 		} );
 
 		fireEvent.click(
 			getAllByRole( 'tab' )[ getTabID( 'connect-more-services' ) ]
 		);
+
+		await waitForRegistry();
+
 		expect( global.location.hash ).toEqual( '#/connect-more-services' );
 	} );
 
@@ -134,16 +167,32 @@ describe( 'SettingsApp', () => {
 			coreUserTrackingResponse
 		);
 
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/modules/search-console/data' )
+		);
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/modules/analytics-4/data' )
+		);
+
+		registry.dispatch( CORE_USER ).receiveGetAudienceSettings( {
+			configuredAudiences: null,
+			isAudienceSegmentationWidgetHidden: false,
+		} );
+
 		await registry.dispatch( CORE_USER ).setTrackingEnabled( false );
 
-		const { getAllByRole } = render( <SettingsApp />, {
+		const { getAllByRole, waitForRegistry } = render( <SettingsApp />, {
 			history,
 			registry,
+			viewContext: VIEW_CONTEXT_SETTINGS,
 		} );
+
+		await waitForRegistry();
 
 		fireEvent.click(
 			getAllByRole( 'tab' )[ getTabID( 'admin-settings' ) ]
 		);
+
 		expect( global.location.hash ).toEqual( '#/admin-settings' );
 	} );
 } );

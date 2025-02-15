@@ -82,9 +82,12 @@ describe( 'trackEvent', () => {
 		const config = {
 			referenceSiteURL: 'https://www.example.com/',
 			userIDHash: 'a1b2c3',
-			trackingID: 'UA-12345678-1',
-			isFirstAdmin: true,
+			trackingID: 'G-EQDN3BWDSD',
+			activeModules: [],
 			trackingEnabled: true,
+			userRoles: [ 'administrator' ],
+			isAuthenticated: 1,
+			pluginVersion: '1.2.3',
 		};
 
 		let pushArgs;
@@ -93,7 +96,12 @@ describe( 'trackEvent', () => {
 				push: ( ...args ) => ( pushArgs = args ),
 			},
 		};
-		const { trackEvent } = createTracking( config, dataLayer );
+		const { trackEvent, initializeSnippet } = createTracking(
+			config,
+			dataLayer
+		);
+
+		const { scriptTagSrc } = await initializeSnippet();
 
 		// Ignore warning (see below) since irrelevant for this test.
 		await fakeTimeouts( () =>
@@ -115,18 +123,15 @@ describe( 'trackEvent', () => {
 		expect( eventName ).toEqual( 'name' );
 		expect( eventData ).toEqual(
 			expect.objectContaining( {
-				send_to: config.trackingID,
+				send_to: 'site_kit',
 				event_category: 'category',
 				event_label: 'label',
 				value: 'value',
-				dimension1: 'https://www.example.com',
-				dimension2: 'true',
-				dimension3: config.userIDHash,
-				dimension4: global.GOOGLESITEKIT_VERSION || '',
-				dimension5: 'feature1, feature2',
 			} )
 		);
 		expect( pushArgs[ 0 ][ 2 ] ).toHaveProperty( 'event_callback' );
+		const expectedTagSrc = `https://www.googletagmanager.com/gtag/js?id=${ config.trackingID }&l=${ DATA_LAYER }`;
+		expect( scriptTagSrc ).toEqual( expectedTagSrc );
 	} );
 
 	it( 'does not push to dataLayer when tracking is disabled', async () => {
@@ -200,34 +205,5 @@ describe( 'trackEvent', () => {
 			'Tracking event "test-name" (category "test-category") took too long to fire.'
 		);
 		consoleWarnSpy.mockClear();
-	} );
-
-	it( 'not push to dataLayer with the opt-out set', async () => {
-		const push = jest.fn();
-		const dataLayer = {
-			[ DATA_LAYER ]: { push },
-		};
-
-		const mockGlobal = {
-			_gaUserPrefs: {
-				ioo: () => true,
-			},
-		};
-		const iooSpy = jest.spyOn( mockGlobal._gaUserPrefs, 'ioo' );
-		const { trackEvent } = createTracking(
-			{ trackingEnabled: true },
-			dataLayer,
-			mockGlobal
-		);
-		await fakeTimeouts( () =>
-			trackEvent(
-				'test-category',
-				'test-name',
-				'test-label',
-				'test-value'
-			)
-		);
-		expect( iooSpy ).toHaveBeenCalled();
-		expect( push ).not.toHaveBeenCalled();
 	} );
 } );

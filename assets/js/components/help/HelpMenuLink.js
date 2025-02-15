@@ -31,17 +31,20 @@ import { useCallback } from '@wordpress/element';
  */
 import Link from '../Link';
 import { trackEvent } from '../../util';
+import useViewContext from '../../hooks/useViewContext';
 
 function HelpMenuLink( { children, href, gaEventLabel } ) {
+	const viewContext = useViewContext();
+
 	const onClick = useCallback( async () => {
 		if ( gaEventLabel ) {
 			await trackEvent(
-				'global_help_menu',
+				`${ viewContext }_headerbar_helpmenu`,
 				'click_outgoing_link',
 				gaEventLabel
 			);
 		}
-	}, [ gaEventLabel ] );
+	}, [ gaEventLabel, viewContext ] );
 
 	return (
 		<li className="googlesitekit-help-menu-link mdc-list-item" role="none">
@@ -50,7 +53,6 @@ function HelpMenuLink( { children, href, gaEventLabel } ) {
 				href={ href }
 				external
 				hideExternalIndicator
-				inherit
 				role="menuitem"
 				onClick={ onClick }
 			>

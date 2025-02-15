@@ -20,7 +20,7 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import isPlainObject from 'lodash/isPlainObject';
+import { isPlainObject } from 'lodash';
 
 /**
  * WordPress dependencies
@@ -30,7 +30,7 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { combineStores } from 'googlesitekit-data';
 
 // Actions
 const SET_SERVER_ERROR = 'SET_SERVER_ERROR';
@@ -133,7 +133,7 @@ const baseSelectors = {
 	},
 };
 
-const store = Data.combineStores( {
+const store = combineStores( {
 	initialState: baseInitialState,
 	actions: baseActions,
 	reducer: baseReducer,

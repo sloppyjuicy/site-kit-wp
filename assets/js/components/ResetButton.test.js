@@ -30,6 +30,7 @@ import {
 	fireEvent,
 	act,
 	provideSiteInfo,
+	waitFor,
 } from '../../../tests/js/test-utils';
 import { CORE_SITE } from '../googlesitekit/datastore/site/constants';
 import ResetButton from './ResetButton';
@@ -80,20 +81,26 @@ describe( 'ResetButton', () => {
 
 	describe( 'after click', () => {
 		let container;
-		beforeEach( () => {
+		beforeEach( async () => {
 			container = render( <ResetButton />, { registry } ).container;
 			fireEvent.click(
 				container.querySelector( '.googlesitekit-reset-button' )
 			);
+
+			await waitFor( () => {
+				expect(
+					document.querySelector( '.mdc-dialog--open' )
+				).toBeInTheDocument();
+			} );
 		} );
 
-		it( 'should open the dialog', async () => {
-			expect(
-				document.querySelector( '.mdc-dialog--open' )
-			).toBeInTheDocument();
+		it( 'should open the dialog', () => {
+			expect( document.querySelector( '.mdc-dialog' ) ).toHaveClass(
+				'mdc-dialog--open'
+			);
 		} );
 
-		it( 'should show reset and cancel buttons', async () => {
+		it( 'should show reset and cancel buttons', () => {
 			expect(
 				document.querySelector(
 					'.mdc-dialog--open .mdc-dialog__cancel-button'
@@ -112,22 +119,46 @@ describe( 'ResetButton', () => {
 					'.mdc-dialog--open .mdc-dialog__cancel-button'
 				)
 			);
+
+			await waitFor( () => {
+				expect(
+					document.querySelector( '.mdc-dialog--closing' )
+				).not.toBeInTheDocument();
+			} );
+
 			expect(
 				document.querySelector( '.mdc-dialog--open' )
 			).not.toBeInTheDocument();
+
+			// Verify that none of .mdc-dialog--opening, .mdc-dialog--open or .mdc-dialog--closing are applied to the .mdc-dialog element.
+			expect(
+				document.querySelector( '.mdc-dialog' ).classList.length
+			).toBe( 2 );
 		} );
 
 		it( 'should close the modal on pressing escape key', async () => {
 			fireEvent.keyUp( global, { keyCode: ESCAPE } );
+
+			await waitFor( () => {
+				expect(
+					document.querySelector( '.mdc-dialog--closing' )
+				).not.toBeInTheDocument();
+			} );
+
 			expect(
 				document.querySelector( '.mdc-dialog--open' )
 			).not.toBeInTheDocument();
+
+			// Verify that none of .mdc-dialog--opening, .mdc-dialog--open or .mdc-dialog--closing are applied to the .mdc-dialog element.
+			expect(
+				document.querySelector( '.mdc-dialog' ).classList.length
+			).toBe( 2 );
 		} );
 
 		it( 'should reset the plugin, delete local and session storage', async () => {
 			const response = true;
 			fetchMock.postOnce(
-				/^\/google-site-kit\/v1\/core\/site\/data\/reset/,
+				new RegExp( '^/google-site-kit/v1/core/site/data/reset' ),
 				{ body: JSON.stringify( response ), status: 200 }
 			);
 

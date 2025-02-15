@@ -20,6 +20,8 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import { useMount } from 'react-use';
+import { useCallbackOne } from 'use-memo-one';
 
 /**
  * WordPress dependencies
@@ -30,37 +32,25 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import Header from '../Header';
-import Link from '../Link';
+import { useSelect, useDispatch, useRegistry } from 'googlesitekit-data';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import { CORE_MODULES } from '../../googlesitekit/modules/datastore/constants';
 import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import { deleteItem } from '../../googlesitekit/api/cache';
+import { trackEvent } from '../../util';
 import HelpMenu from '../help/HelpMenu';
-import HelpMenuLink from '../help/HelpMenuLink';
-const { useSelect, useDispatch } = Data;
+import { Cell, Grid, Row } from '../../material-components';
+import Header from '../Header';
+import ModuleSetupFooter from './ModuleSetupFooter';
 
 export default function ModuleSetup( { moduleSlug } ) {
 	const { navigateTo } = useDispatch( CORE_LOCATION );
 
-	const settingsPageURL = useSelect( ( select ) =>
-		select( CORE_SITE ).getAdminURL( 'googlesitekit-settings' )
-	);
 	const module = useSelect( ( select ) =>
 		select( CORE_MODULES ).getModule( moduleSlug )
 	);
 
-	const args = {
-		notification: 'authentication_success',
-	};
-
-	if ( moduleSlug ) {
-		args.slug = moduleSlug;
-	}
-
-	const adminURL = useSelect( ( select ) =>
-		select( CORE_SITE ).getAdminURL( 'googlesitekit-dashboard', args )
-	);
+	const registry = useRegistry();
 
 	/**
 	 * When module setup done, we redirect the user to Site Kit dashboard.
@@ -70,12 +60,48 @@ export default function ModuleSetup( { moduleSlug } ) {
 	 *
 	 * @param {string} [redirectURL] URL to redirect to when complete. Defaults to Site Kit dashboard.
 	 */
-	const finishSetup = useCallback(
-		( redirectURL ) => {
-			navigateTo( redirectURL || adminURL );
+	const finishSetup = useCallbackOne(
+		async ( redirectURL ) => {
+			await deleteItem( 'module_setup' );
+
+			await trackEvent(
+				'moduleSetup',
+				'complete_module_setup',
+				moduleSlug
+			);
+
+			if ( redirectURL ) {
+				navigateTo( redirectURL );
+				return;
+			}
+
+			const { select, resolveSelect } = registry;
+			await resolveSelect( CORE_SITE ).getSiteInfo();
+			const adminURL = select( CORE_SITE ).getAdminURL(
+				'googlesitekit-dashboard',
+				{
+					notification: 'authentication_success',
+					slug: moduleSlug,
+				}
+			);
+			navigateTo( adminURL );
 		},
-		[ adminURL, navigateTo ]
+		[ registry, navigateTo, moduleSlug ]
 	);
+
+	const onCompleteSetup = module?.onCompleteSetup;
+	const onCompleteSetupCallback = useCallback(
+		() => onCompleteSetup( registry, finishSetup ),
+		[ onCompleteSetup, registry, finishSetup ]
+	);
+
+	const onCancelButtonClick = useCallback( async () => {
+		await trackEvent( 'moduleSetup', 'cancel_module_setup', moduleSlug );
+	}, [ moduleSlug ] );
+
+	useMount( () => {
+		trackEvent( 'moduleSetup', 'view_module_setup', moduleSlug );
+	} );
 
 	if ( ! module?.SetupComponent ) {
 		return null;
@@ -86,38 +112,17 @@ export default function ModuleSetup( { moduleSlug } ) {
 	return (
 		<Fragment>
 			<Header>
-				<HelpMenu>
-					{ moduleSlug === 'adsense' && (
-						<HelpMenuLink href="https://support.google.com/adsense/">
-							{ __( 'Get help with AdSense', 'google-site-kit' ) }
-						</HelpMenuLink>
-					) }
-				</HelpMenu>
+				<HelpMenu />
 			</Header>
 			<div className="googlesitekit-setup">
-				<div className="mdc-layout-grid">
-					<div className="mdc-layout-grid__inner">
-						<div
-							className="
-							mdc-layout-grid__cell
-							mdc-layout-grid__cell--span-12
-						"
-						>
+				<Grid>
+					<Row>
+						<Cell size={ 12 }>
 							<section className="googlesitekit-setup__wrapper">
-								<div className="mdc-layout-grid">
-									<div className="mdc-layout-grid__inner">
-										<div
-											className="
-											mdc-layout-grid__cell
-											mdc-layout-grid__cell--span-12
-										"
-										>
-											<p
-												className="
-												googlesitekit-setup__intro-title
-												googlesitekit-overline
-											"
-											>
+								<Grid>
+									<Row>
+										<Cell size={ 12 }>
+											<p className="googlesitekit-setup__intro-title">
 												{ __(
 													'Connect Service',
 													'google-site-kit'
@@ -127,37 +132,23 @@ export default function ModuleSetup( { moduleSlug } ) {
 												module={ module }
 												finishSetup={ finishSetup }
 											/>
-										</div>
-									</div>
-								</div>
-								<div className="googlesitekit-setup__footer">
-									<div className="mdc-layout-grid">
-										<div className="mdc-layout-grid__inner">
-											<div
-												className="
-													mdc-layout-grid__cell
-													mdc-layout-grid__cell--span-2-phone
-													mdc-layout-grid__cell--span-4-tablet
-													mdc-layout-grid__cell--span-6-desktop
-												"
-											>
-												<Link
-													id={ `setup-${ module.slug }-cancel` }
-													href={ settingsPageURL }
-												>
-													{ __(
-														'Cancel',
-														'google-site-kit'
-													) }
-												</Link>
-											</div>
-										</div>
-									</div>
-								</div>
+										</Cell>
+									</Row>
+								</Grid>
+
+								<ModuleSetupFooter
+									module={ module }
+									onCancel={ onCancelButtonClick }
+									onComplete={
+										typeof onCompleteSetup === 'function'
+											? onCompleteSetupCallback
+											: undefined
+									}
+								/>
 							</section>
-						</div>
-					</div>
-				</div>
+						</Cell>
+					</Row>
+				</Grid>
 			</div>
 		</Fragment>
 	);

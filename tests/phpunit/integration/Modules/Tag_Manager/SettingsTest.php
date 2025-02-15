@@ -37,7 +37,6 @@ class SettingsTest extends SettingsTestCase {
 				'internalContainerID'    => '',
 				'internalAMPContainerID' => '',
 				'ownerID'                => 0,
-				'gaPropertyID'           => '',
 			),
 			get_option( Settings::OPTION )
 		);
@@ -55,7 +54,7 @@ class SettingsTest extends SettingsTestCase {
 		$settings->register();
 
 		$option = $settings->get();
-		$this->assertArraySubset(
+		$this->assertArrayIntersection(
 			array(
 				// The first legacy key for the same new key wins.
 				'accountID'   => 'test-account-id-snake',

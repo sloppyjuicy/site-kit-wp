@@ -30,9 +30,15 @@ import { addQueryArgs } from '@wordpress/url';
 /**
  * Internal dependencies
  */
-import { deleteItem, getItem, getKeys, setItem } from './cache';
-import { stringifyObject } from '../../util';
-import { ERROR_CODE_MISSING_REQUIRED_SCOPE } from '../../util/errors';
+import {
+	deleteItem,
+	getItem,
+	getKeys,
+	setItem,
+	STORAGE_KEY_PREFIX_ROOT,
+} from './cache';
+import { stringifyObject, HOUR_IN_SECONDS } from '../../util';
+import { isAuthError, isPermissionScopeError } from '../../util/errors';
 import { trackAPIError } from '../../util/api';
 
 // Specific error to handle here, see below.
@@ -93,9 +99,9 @@ export const dispatchAPIError = ( error ) => {
 	// Kind of a hack, but scales to all components.
 	const dispatch = global.googlesitekit?.data?.dispatch?.( CORE_USER );
 	if ( dispatch ) {
-		if ( error.code === ERROR_CODE_MISSING_REQUIRED_SCOPE ) {
+		if ( isPermissionScopeError( error ) ) {
 			dispatch.setPermissionScopeError( error );
-		} else if ( error.data?.reconnectURL ) {
+		} else if ( isAuthError( error ) ) {
 			dispatch.setAuthError( error );
 		}
 	}
@@ -116,6 +122,7 @@ export const dispatchAPIError = ( error ) => {
  * @param {number}  options.method      HTTP method to use for this request.
  * @param {Object}  options.queryParams Query params to send with the request.
  * @param {boolean} options.useCache    Enable or disable caching for this request only. Caching is only used for `GET` requests.
+ * @param {Object}  options.signal      Abort the fetch request.
  * @return {Promise} Response of HTTP request.
  */
 export const siteKitRequest = async (
@@ -124,10 +131,11 @@ export const siteKitRequest = async (
 	datapoint,
 	{
 		bodyParams,
-		cacheTTL = 3600,
+		cacheTTL = HOUR_IN_SECONDS,
 		method = 'GET',
 		queryParams,
 		useCache = undefined,
+		signal,
 	} = {}
 ) => {
 	invariant( type, '`type` argument for requests is required.' );
@@ -160,6 +168,7 @@ export const siteKitRequest = async (
 		const response = await apiFetch( {
 			data: bodyParams,
 			method,
+			signal,
 			path: addQueryArgs(
 				`/google-site-kit/v1/${ type }/${ identifier }/data/${ datapoint }`,
 				queryParams
@@ -172,6 +181,12 @@ export const siteKitRequest = async (
 
 		return response;
 	} catch ( error ) {
+		if ( signal?.aborted ) {
+			// If the request was canceled, don't do any
+			// error handling and just re-throw the error.
+			throw error;
+		}
+
 		if ( error?.data?.cacheTTL ) {
 			await setItem( cacheKey, error, {
 				ttl: error.data.cacheTTL,
@@ -212,19 +227,21 @@ export const siteKitRequest = async (
  * @param {Object}  options          Extra options for this request.
  * @param {number}  options.cacheTTL The oldest cache data to use, in seconds.
  * @param {boolean} options.useCache Enable or disable caching for this request only.
+ * @param {Object}  options.signal   Abort the fetch request.
  * @return {Promise} A promise for the `fetch` request.
  */
-export const get = async (
+export const get = (
 	type,
 	identifier,
 	datapoint,
 	data,
-	{ cacheTTL = 3600, useCache = undefined } = {}
+	{ cacheTTL = HOUR_IN_SECONDS, useCache = undefined, signal } = {}
 ) => {
 	return siteKitRequest( type, identifier, datapoint, {
 		cacheTTL,
 		queryParams: data,
 		useCache,
+		signal,
 	} );
 };
 
@@ -247,6 +264,7 @@ export const get = async (
  * @param {Object}  options             Extra options for this request.
  * @param {number}  options.method      HTTP method to use for this request.
  * @param {boolean} options.queryParams Query params to send with the request.
+ * @param {Object}  options.signal      Abort the fetch request.
  * @return {Promise} A promise for the `fetch` request.
  */
 export const set = async (
@@ -254,13 +272,14 @@ export const set = async (
 	identifier,
 	datapoint,
 	data,
-	{ method = 'POST', queryParams = {} } = {}
+	{ method = 'POST', queryParams = {}, signal } = {}
 ) => {
 	const response = await siteKitRequest( type, identifier, datapoint, {
 		bodyParams: { data },
 		method,
 		queryParams,
 		useCache: false,
+		signal,
 	} );
 
 	await invalidateCache( type, identifier, datapoint );
@@ -320,7 +339,11 @@ export const invalidateCache = async ( type, identifier, datapoint ) => {
 	const allKeys = await getKeys();
 
 	allKeys.forEach( ( key ) => {
-		if ( key.indexOf( groupPrefix ) === 0 ) {
+		if (
+			new RegExp(
+				`^${ STORAGE_KEY_PREFIX_ROOT }([^_]+_){2}${ groupPrefix }`
+			).test( key )
+		) {
 			deleteItem( key );
 		}
 	} );

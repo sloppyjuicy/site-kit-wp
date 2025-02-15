@@ -20,7 +20,6 @@
  * External dependencies
  */
 import fetchMock from 'fetch-mock';
-import { mockAllIsIntersecting } from 'react-intersection-observer/test-utils';
 
 /**
  * Internal dependencies
@@ -30,6 +29,7 @@ import {
 	fireEvent,
 	render,
 	waitFor,
+	act,
 } from '../../../../../../tests/js/test-utils';
 import {
 	MODULES_PAGESPEED_INSIGHTS,
@@ -38,91 +38,115 @@ import {
 } from '../../datastore/constants';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
 import * as fixtures from '../../datastore/__fixtures__';
-import { freezeFetch } from '../../../../../../tests/js/utils';
+import {
+	createTestRegistry,
+	freezeFetch,
+} from '../../../../../../tests/js/utils';
 
 const activeClass = 'mdc-tab--active';
 const url = fixtures.pagespeedMobile.loadingExperience.id;
-const setupRegistry = ( { dispatch } ) => {
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
-		fixtures.pagespeedMobileNoStackPacks,
-		{
-			url,
-			strategy: STRATEGY_MOBILE,
-		}
-	);
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
-		fixtures.pagespeedDesktopNoStackPacks,
-		{
-			url,
-			strategy: STRATEGY_DESKTOP,
-		}
-	);
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
-		url,
-		STRATEGY_DESKTOP,
-	] );
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
-		url,
-		STRATEGY_MOBILE,
-	] );
-	dispatch( CORE_SITE ).receiveSiteInfo( {
-		referenceSiteURL: url,
-		currentEntityURL: null,
-	} );
-};
-const setupRegistryNoReports = ( { dispatch } ) => {
-	dispatch( CORE_SITE ).receiveSiteInfo( {
-		referenceSiteURL: url,
-		currentEntityURL: null,
-	} );
-};
-const setupRegistryNoFieldDataDesktop = ( { dispatch } ) => {
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
-		fixtures.pagespeedMobileNoStackPacks,
-		{
-			url,
-			strategy: STRATEGY_MOBILE,
-		}
-	);
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
-		url,
-		STRATEGY_MOBILE,
-	] );
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
-		fixtures.pagespeedDesktopNoFieldDataNoStackPacks,
-		{
-			url,
-			strategy: STRATEGY_DESKTOP,
-		}
-	);
-	dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
-		url,
-		STRATEGY_DESKTOP,
-	] );
-	dispatch( CORE_SITE ).receiveSiteInfo( {
-		referenceSiteURL: url,
-		currentEntityURL: null,
-	} );
-};
 
 describe( 'DashboardPageSpeed', () => {
-	beforeAll( () => mockAllIsIntersecting( true ) );
+	let registry;
+
+	beforeEach( () => {
+		registry = createTestRegistry();
+
+		const { dispatch } = registry;
+
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
+			fixtures.pagespeedMobileNoStackPacks,
+			{
+				url,
+				strategy: STRATEGY_MOBILE,
+			}
+		);
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
+			fixtures.pagespeedDesktopNoStackPacks,
+			{
+				url,
+				strategy: STRATEGY_DESKTOP,
+			}
+		);
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
+			url,
+			STRATEGY_DESKTOP,
+		] );
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
+			url,
+			STRATEGY_MOBILE,
+		] );
+		dispatch( CORE_SITE ).receiveSiteInfo( {
+			referenceSiteURL: url,
+			currentEntityURL: null,
+		} );
+	} );
+
 	afterEach( fetchMock.mockClear );
 
-	it( 'renders a progress bar while reports are requested', async () => {
-		freezeFetch(
-			/^\/google-site-kit\/v1\/modules\/pagespeed-insights\/data\/pagespeed/
+	const setupRegistryNoFieldDataDesktop = () => {
+		registry = createTestRegistry();
+
+		const { dispatch } = registry;
+
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
+			fixtures.pagespeedMobileNoStackPacks,
+			{
+				url,
+				strategy: STRATEGY_MOBILE,
+			}
 		);
-		// needs second freezeFetch call, as one is for desktop and the other for mobile
-		freezeFetch(
-			/^\/google-site-kit\/v1\/modules\/pagespeed-insights\/data\/pagespeed/
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
+			url,
+			STRATEGY_MOBILE,
+		] );
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).receiveGetReport(
+			fixtures.pagespeedDesktopNoFieldDataNoStackPacks,
+			{
+				url,
+				strategy: STRATEGY_DESKTOP,
+			}
 		);
-		const { queryByRole } = render( <DashboardPageSpeed />, {
-			setupRegistry: setupRegistryNoReports,
+		dispatch( MODULES_PAGESPEED_INSIGHTS ).finishResolution( 'getReport', [
+			url,
+			STRATEGY_DESKTOP,
+		] );
+		dispatch( CORE_SITE ).receiveSiteInfo( {
+			referenceSiteURL: url,
+			currentEntityURL: null,
+		} );
+	};
+
+	it( 'renders preview blocks while reports are requested', async () => {
+		registry = createTestRegistry();
+
+		registry.dispatch( CORE_SITE ).receiveSiteInfo( {
+			referenceSiteURL: url,
+			currentEntityURL: null,
 		} );
 
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		// Needs second freezeFetch call, as one is for desktop and the other for mobile.
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		const { container } = render( <DashboardPageSpeed />, {
+			registry,
+		} );
+		const widgetElement = container.querySelector(
+			'#googlesitekit-pagespeed-header'
+		);
+
 		await waitFor( () => {
-			expect( queryByRole( 'progressbar' ) ).toBeInTheDocument();
+			expect( widgetElement ).toHaveClass(
+				'googlesitekit-pagespeed-widget__content-wrapper--loading'
+			);
 		} );
 	} );
 
@@ -135,7 +159,7 @@ describe( 'DashboardPageSpeed', () => {
 		).toHaveProperty( 'metrics' );
 
 		const { getByLabelText } = render( <DashboardPageSpeed />, {
-			setupRegistry,
+			registry,
 		} );
 
 		expect(
@@ -144,8 +168,10 @@ describe( 'DashboardPageSpeed', () => {
 	} );
 
 	it( 'displays lab data by default when field data is not present in both mobile and desktop reports', () => {
+		setupRegistryNoFieldDataDesktop();
+
 		const { getByLabelText } = render( <DashboardPageSpeed />, {
-			setupRegistry: setupRegistryNoFieldDataDesktop,
+			registry,
 		} );
 
 		expect(
@@ -158,7 +184,7 @@ describe( 'DashboardPageSpeed', () => {
 
 	it( 'displays the mobile data by default', () => {
 		const { getByLabelText } = render( <DashboardPageSpeed />, {
-			setupRegistry,
+			registry,
 		} );
 
 		expect( getByLabelText( /mobile/i ) ).toHaveClass( activeClass );
@@ -166,12 +192,11 @@ describe( 'DashboardPageSpeed', () => {
 
 	it( 'has tabs for toggling the displayed data source', () => {
 		const { getByLabelText } = render( <DashboardPageSpeed />, {
-			setupRegistry,
+			registry,
 		} );
 
-		const labDataTabLink = getByLabelText( /In the Lab/i ).closest(
-			'button'
-		);
+		const labDataTabLink =
+			getByLabelText( /In the Lab/i ).closest( 'button' );
 		expect( labDataTabLink ).not.toHaveClass( activeClass );
 		fireEvent.click( labDataTabLink );
 
@@ -183,7 +208,7 @@ describe( 'DashboardPageSpeed', () => {
 
 	it( 'has tabs for toggling the tested device', () => {
 		const { getByLabelText } = render( <DashboardPageSpeed />, {
-			setupRegistry,
+			registry,
 		} );
 
 		const desktopToggle = getByLabelText( /desktop/i );
@@ -195,11 +220,58 @@ describe( 'DashboardPageSpeed', () => {
 		expect( getByLabelText( /mobile/i ) ).not.toHaveClass( activeClass );
 	} );
 
-	it( 'displays a "Field data unavailable" message when field data is not available', () => {
-		const { getByLabelText, queryByText, registry } = render(
+	it( 'displays refreshing states when the `Run test again` button is clicked', async () => {
+		setupRegistryNoFieldDataDesktop();
+
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		// Needs second freezeFetch call, as one is for desktop and the other for mobile.
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		const { container, getByRole, queryByRole } = render(
 			<DashboardPageSpeed />,
 			{
-				setupRegistry: setupRegistryNoFieldDataDesktop,
+				registry,
+			}
+		);
+
+		const runTestAgainBtn = getByRole( 'button', {
+			name: /Run test again/i,
+		} );
+
+		await act( async () => {
+			fireEvent.click( runTestAgainBtn );
+
+			await waitFor( () => {
+				// Verifies the ProgressBar element is present in the tree.
+				expect( queryByRole( 'progressbar' ) ).toBeInTheDocument();
+				// Verifies the Section element has `__refreshing` class that grayed out the section.
+				expect( container.querySelector( 'section' ) ).toHaveClass(
+					'googlesitekit-pagespeed-widget__refreshing'
+				);
+				// Verifies the `Run test again` button is disabled.
+				expect( runTestAgainBtn ).toBeDisabled();
+				// Verifies the Spinner element is present in the tree.
+				expect( container.querySelector( '.spinner' ) ).toHaveClass(
+					'spinner'
+				);
+			} );
+		} );
+	} );
+
+	it( 'displays a "Field data unavailable" message when field data is not available', () => {
+		setupRegistryNoFieldDataDesktop();
+
+		const { getByLabelText, queryByText } = render(
+			<DashboardPageSpeed />,
+			{
+				registry,
 			}
 		);
 
@@ -230,5 +302,127 @@ describe( 'DashboardPageSpeed', () => {
 		fireEvent.click( getByLabelText( /desktop/i ).closest( 'button' ) );
 
 		expect( queryByText( /Field data unavailable/i ) ).toBeInTheDocument();
+	} );
+
+	it( 'should disable the `How to improve` button when the test is running', async () => {
+		setupRegistryNoFieldDataDesktop();
+
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		// Needs second freezeFetch call, as one is for desktop and the other for mobile.
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		const { getByRole } = render( <DashboardPageSpeed />, {
+			registry,
+		} );
+
+		const runTestAgainBtn = getByRole( 'button', {
+			name: /Run test again/i,
+		} );
+		const howToImproveBtn = getByRole( 'button', {
+			name: /How to improve/i,
+		} );
+
+		await act( async () => {
+			fireEvent.click( runTestAgainBtn );
+
+			await waitFor( () => {
+				// Verifies the `How to improve` button is disabled when the test is running.
+				expect( howToImproveBtn ).toBeDisabled();
+			} );
+		} );
+	} );
+
+	it( 'should disable the data source tabs when the test is running', async () => {
+		setupRegistryNoFieldDataDesktop();
+
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		// Needs second freezeFetch call, as one is for desktop and the other for mobile.
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		const { getByRole } = render( <DashboardPageSpeed />, {
+			registry,
+		} );
+
+		const runTestAgainBtn = getByRole( 'button', {
+			name: /Run test again/i,
+		} );
+		// Data source tabs.
+		const inTheLabTab = getByRole( 'tab', {
+			name: /In the Lab/i,
+		} );
+		const inTheFieldTab = getByRole( 'tab', {
+			name: /In the Field/i,
+		} );
+		const howToImproveTab = getByRole( 'tab', {
+			name: /How to improve/i,
+		} );
+
+		await act( async () => {
+			fireEvent.click( runTestAgainBtn );
+
+			await waitFor( () => {
+				// Verifies the `In the Lab` tab is disabled.
+				expect( inTheLabTab ).toBeDisabled();
+				// Verifies the `In the Field` tab is disabled.
+				expect( inTheFieldTab ).toBeDisabled();
+				// Verifies the `How to improve` tab is disabled.
+				expect( howToImproveTab ).toBeDisabled();
+			} );
+		} );
+	} );
+
+	it( 'should disable the device size tabs when the test is running', async () => {
+		setupRegistryNoFieldDataDesktop();
+
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		// Needs second freezeFetch call, as one is for desktop and the other for mobile.
+		freezeFetch(
+			new RegExp(
+				'^/google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+			)
+		);
+		const { getByRole } = render( <DashboardPageSpeed />, {
+			registry,
+		} );
+
+		const runTestAgainBtn = getByRole( 'button', {
+			name: /Run test again/i,
+		} );
+		// Device size tabs.
+		const mobileTab = getByRole( 'tab', {
+			name: /Mobile/i,
+		} );
+		const desktopTab = getByRole( 'tab', {
+			name: /Desktop/i,
+		} );
+
+		await act( async () => {
+			fireEvent.click( runTestAgainBtn );
+
+			await waitFor( () => {
+				// Verifies the device `Mobile` tab is disabled.
+				expect( mobileTab ).toBeDisabled();
+				// Verifies the device `Desktop` tab is disabled.
+				expect( desktopTab ).toBeDisabled();
+			} );
+		} );
 	} );
 } );

@@ -31,12 +31,12 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { MODULES_TAGMANAGER, FORM_SETUP } from '../../datastore/constants';
 import { CORE_FORMS } from '../../../../googlesitekit/datastore/forms/constants';
-import { TextField, HelperText, Input } from '../../../../material-components';
+import AccessibleWarningIcon from '../../../../components/AccessibleWarningIcon';
+import { TextField } from 'googlesitekit-components';
 import { isUniqueContainerName } from '../../util';
-const { useSelect, useDispatch } = Data;
 
 export default function ContainerNameTextField( { label, name } ) {
 	const containers = useSelect( ( select ) => {
@@ -58,18 +58,21 @@ export default function ContainerNameTextField( { label, name } ) {
 	const isUniqueName = isUniqueContainerName( containerName, containers );
 
 	const helperText =
-		containerName && ! isUniqueName ? (
-			<HelperText persistent>
-				{ __(
-					'A container with this name already exists.',
+		containerName && ! isUniqueName
+			? __(
+					'A container with this name already exists',
 					'google-site-kit'
-				) }
-			</HelperText>
-		) : undefined;
+			  )
+			: false;
 
-	const trailingIcon = helperText ? (
-		<span className="googlesitekit-text-field-icon--error" />
-	) : undefined;
+	const trailingIcon =
+		containerName && ! isUniqueName ? (
+			<span className="googlesitekit-text-field-icon--error">
+				<AccessibleWarningIcon />
+			</span>
+		) : (
+			false
+		);
 
 	return (
 		<div
@@ -86,14 +89,11 @@ export default function ContainerNameTextField( { label, name } ) {
 				outlined
 				helperText={ helperText }
 				trailingIcon={ trailingIcon }
-			>
-				<Input
-					id={ name }
-					name={ name }
-					value={ containerName }
-					onChange={ onChange }
-				/>
-			</TextField>
+				id={ name }
+				name={ name }
+				value={ containerName }
+				onChange={ onChange }
+			/>
 		</div>
 	);
 }

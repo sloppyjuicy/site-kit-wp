@@ -20,37 +20,70 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import { intersection } from 'lodash';
 
 /**
  * WordPress dependencies
  */
-import { Fragment } from '@wordpress/element';
+import { useMemo, Fragment } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import { CORE_WIDGETS } from '../datastore/constants';
+import { CORE_MODULES } from '../../modules/datastore/constants';
 import BaseWidget from './Widget';
+import WidgetRecoverableModules from './WidgetRecoverableModules';
 import { getWidgetComponentProps } from '../util';
 import { HIDDEN_CLASS } from '../util/constants';
+import useViewOnly from '../../../hooks/useViewOnly';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 
-const { useSelect } = Data;
-
-const WidgetRenderer = ( { slug, OverrideComponent } ) => {
+function WidgetRenderer( { slug, OverrideComponent } ) {
 	const widget = useSelect( ( select ) =>
 		select( CORE_WIDGETS ).getWidget( slug )
 	);
+	const breakpoint = useBreakpoint();
 	const widgetComponentProps = getWidgetComponentProps( slug );
 	const { Widget, WidgetNull } = widgetComponentProps;
 
-	if ( ! widget ) {
+	const recoverableModules = useSelect( ( select ) =>
+		select( CORE_MODULES ).getRecoverableModules()
+	);
+
+	const viewOnly = useViewOnly();
+	const widgetRecoverableModules = useMemo(
+		() =>
+			widget &&
+			recoverableModules &&
+			intersection( widget.modules, Object.keys( recoverableModules ) ),
+		[ recoverableModules, widget ]
+	);
+
+	const isWidgetPreloaded = useSelect( ( select ) =>
+		select( CORE_WIDGETS ).isWidgetPreloaded( slug )
+	);
+
+	if (
+		! widget ||
+		widgetRecoverableModules === undefined ||
+		widget?.hideOnBreakpoints?.includes( breakpoint )
+	) {
 		return <WidgetNull />;
 	}
-
 	const { Component, wrapWidget } = widget;
 
 	let widgetElement = <Component { ...widgetComponentProps } />;
+
+	if ( viewOnly && widgetRecoverableModules?.length ) {
+		widgetElement = (
+			<WidgetRecoverableModules
+				widgetSlug={ slug }
+				moduleSlugs={ widgetRecoverableModules }
+			/>
+		);
+	}
 
 	if ( OverrideComponent ) {
 		// If OverrideComponent passed, render it instead of the actual widget.
@@ -72,8 +105,13 @@ const WidgetRenderer = ( { slug, OverrideComponent } ) => {
 		widgetElement = <Widget>{ widgetElement }</Widget>;
 	}
 
+	if ( isWidgetPreloaded ) {
+		// If the widget is preloaded, hide it.
+		return <div className={ HIDDEN_CLASS }>{ widgetElement }</div>;
+	}
+
 	return widgetElement;
-};
+}
 
 WidgetRenderer.propTypes = {
 	slug: PropTypes.string.isRequired,

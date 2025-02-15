@@ -24,47 +24,62 @@ import PropTypes from 'prop-types';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import ErrorNotice from './ErrorNotice';
 import { CORE_MODULES } from '../googlesitekit/modules/datastore/constants';
 import { isInsufficientPermissionsError } from '../util/errors';
 import { getInsufficientPermissionsErrorDescription } from '../util/insufficient-permissions-error-description';
-const { useSelect } = Data;
 
 export default function StoreErrorNotices( {
+	hasButton = false,
 	moduleSlug,
 	storeName,
-	shouldDisplayError,
 } ) {
 	const errors = useSelect( ( select ) => select( storeName ).getErrors() );
 	const module = useSelect( ( select ) =>
 		select( CORE_MODULES ).getModule( moduleSlug )
 	);
 
+	const existingErrorMessages = [];
+
 	return errors
-		.map( ( error ) => {
-			if ( isInsufficientPermissionsError( error ) ) {
-				error = {
-					...error,
-					message: getInsufficientPermissionsErrorDescription(
-						error.message,
-						module
-					),
-				};
+		.filter( ( error ) => {
+			if (
+				! error?.message ||
+				existingErrorMessages.includes( error.message )
+			) {
+				return false;
 			}
-			return error;
+
+			existingErrorMessages.push( error.message );
+
+			return true;
 		} )
-		.map( ( error, key ) => (
-			<ErrorNotice
-				key={ key }
-				error={ error }
-				shouldDisplayError={ shouldDisplayError }
-			/>
-		) );
+
+		.map( ( error, key ) => {
+			let { message } = error;
+
+			if ( isInsufficientPermissionsError( error ) ) {
+				message = getInsufficientPermissionsErrorDescription(
+					message,
+					module
+				);
+			}
+
+			return (
+				<ErrorNotice
+					key={ key }
+					error={ error }
+					hasButton={ hasButton }
+					storeName={ storeName }
+					message={ message }
+				/>
+			);
+		} );
 }
 
 StoreErrorNotices.propTypes = {
+	hasButton: PropTypes.bool,
 	storeName: PropTypes.string.isRequired,
-	shouldDisplayError: PropTypes.func,
 	moduleSlug: PropTypes.string,
 };

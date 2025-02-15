@@ -19,8 +19,6 @@
 /**
  * External dependencies
  */
-import Tab from '@material/react-tab';
-import TabBar from '@material/react-tab-bar';
 import PropTypes from 'prop-types';
 
 /**
@@ -32,11 +30,13 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import DeviceSizeMobileIcon from '../../svg/device-size-mobile-icon.svg';
-import DeviceSizeDesktopIcon from '../../svg/device-size-desktop-icon.svg';
+import { Tab, TabBar } from 'googlesitekit-components';
+import DeviceSizeMobileIcon from '../../svg/icons/device-size-mobile-icon.svg';
+import DeviceSizeDesktopIcon from '../../svg/icons/device-size-desktop-icon.svg';
 
-const DeviceSizeTabBar = ( {
+function DeviceSizeTabBar( {
 	activeTab,
+	disabled = false,
 	handleDeviceSizeUpdate,
 	deviceSizes = [
 		{
@@ -50,7 +50,7 @@ const DeviceSizeTabBar = ( {
 			icon: <DeviceSizeDesktopIcon width="23" height="17" />,
 		},
 	],
-} ) => {
+} ) {
 	const onUpdate = useCallback(
 		( index ) => {
 			const device = deviceSizes[ index ];
@@ -78,6 +78,7 @@ const DeviceSizeTabBar = ( {
 					<Tab
 						key={ `google-sitekit-device-size-tab-key-${ i }` }
 						aria-label={ label }
+						disabled={ disabled }
 						focusOnActivate={ false }
 					>
 						{ icon }
@@ -86,10 +87,11 @@ const DeviceSizeTabBar = ( {
 			} ) }
 		</TabBar>
 	);
-};
+}
 
 DeviceSizeTabBar.propTypes = {
 	activeTab: PropTypes.string,
+	disabled: PropTypes.bool,
 	deviceSizes: PropTypes.arrayOf(
 		PropTypes.shape( {
 			label: PropTypes.string,

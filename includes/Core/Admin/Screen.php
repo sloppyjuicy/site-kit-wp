@@ -109,7 +109,7 @@ final class Screen {
 	public function add( Context $context ) {
 		static $menu_slug = null;
 
-		if ( ! $this->args['render_callback'] || ! $this->args['title'] ) {
+		if ( ! $this->args['title'] ) {
 			return '';
 		}
 
@@ -155,7 +155,7 @@ final class Screen {
 					 */
 					add_action(
 						'current_screen',
-						function() {
+						function () {
 							global $menu, $_wp_admin_css_colors;
 
 							if ( ! is_array( $menu ) ) {
@@ -180,7 +180,6 @@ final class Screen {
 									break;
 								}
 							}
-
 						},
 						100
 					);
@@ -198,7 +197,7 @@ final class Screen {
 			$this->args['menu_title'],
 			$this->args['capability'],
 			$this->slug,
-			function() use ( $context ) {
+			function () use ( $context ) {
 				$this->render( $context );
 			}
 		);
@@ -227,15 +226,16 @@ final class Screen {
 	 * @param Assets $assets Assets instance to rely on for enqueueing assets.
 	 */
 	public function enqueue_assets( Assets $assets ) {
-		// Enqueue fonts.
-		$assets->enqueue_fonts();
-
 		// Enqueue base admin screen stylesheet.
 		$assets->enqueue_asset( 'googlesitekit-admin-css' );
 
-		if ( $this->args['enqueue_callback'] ) {
-			call_user_func( $this->args['enqueue_callback'], $assets );
-		}
+		$cb = is_callable( $this->args['enqueue_callback'] )
+			? $this->args['enqueue_callback']
+			: function ( Assets $assets ) {
+				$assets->enqueue_asset( $this->slug );
+			};
+
+		call_user_func( $cb, $assets );
 	}
 
 	/**
@@ -246,18 +246,15 @@ final class Screen {
 	 * @param Context $context Plugin context.
 	 */
 	private function render( Context $context ) {
-		if ( ! $this->args['render_callback'] ) {
-			return;
-		}
+		$cb = is_callable( $this->args['render_callback'] )
+			? $this->args['render_callback']
+			: function () {
+				printf( '<div id="js-%s" class="googlesitekit-page"></div>', esc_attr( $this->slug ) );
+			};
 
-		?>
-		<div class="googlesitekit-plugin">
-			<?php
-				$this->render_noscript_html();
-
-				call_user_func( $this->args['render_callback'], $context );
-			?>
-		</div>
-		<?php
+		echo '<div class="googlesitekit-plugin">';
+			$this->render_noscript_html();
+			call_user_func( $cb, $context );
+		echo '</div>';
 	}
 }

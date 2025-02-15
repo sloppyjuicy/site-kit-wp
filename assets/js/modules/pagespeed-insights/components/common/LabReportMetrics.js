@@ -24,6 +24,7 @@ import PropTypes from 'prop-types';
 /**
  * WordPress dependencies
  */
+import { createInterpolateElement } from '@wordpress/element';
 import { __, _x } from '@wordpress/i18n';
 
 /**
@@ -32,43 +33,48 @@ import { __, _x } from '@wordpress/i18n';
 import ReportMetric from './ReportMetric';
 import MetricsLearnMoreLink from './MetricsLearnMoreLink';
 import { getScoreCategory } from '../../util';
+import { getReportErrorMessage } from '../../../../util/errors';
+import ReportErrorActions from '../../../../components/ReportErrorActions';
 import ErrorText from '../../../../components/ErrorText';
 
 export default function LabReportMetrics( { data, error } ) {
-	const totalBlockingTime =
-		data?.lighthouseResult?.audits?.[ 'total-blocking-time' ];
 	const largestContentfulPaint =
 		data?.lighthouseResult?.audits?.[ 'largest-contentful-paint' ];
 	const cumulativeLayoutShift =
 		data?.lighthouseResult?.audits?.[ 'cumulative-layout-shift' ];
+	const totalBlockingTime =
+		data?.lighthouseResult?.audits?.[ 'total-blocking-time' ];
 
 	if ( error ) {
+		const errorMessage = getReportErrorMessage( error );
+
 		return (
 			<div className="googlesitekit-pagespeed-insights-web-vitals-metrics">
-				<div className="googlesitekit-pagespeed-report__row googlesitekit-pagespeed-report__row--first">
-					<ErrorText message={ error.message } />
+				<div className="googlesitekit-pagespeed-report__row googlesitekit-pagespeed-report__row--error">
+					<ErrorText message={ errorMessage } />
+
+					<ReportErrorActions
+						moduleSlug="pagespeed-insights"
+						error={ error }
+					/>
 				</div>
 			</div>
 		);
-	}
-
-	if (
-		! totalBlockingTime ||
-		! largestContentfulPaint ||
-		! cumulativeLayoutShift
-	) {
-		return null;
 	}
 
 	return (
 		<div className="googlesitekit-pagespeed-insights-web-vitals-metrics">
 			<div className="googlesitekit-pagespeed-report__row googlesitekit-pagespeed-report__row--first">
 				<p>
-					{ __(
-						'Lab data is a snapshot of how your page performs right now, measured in tests we run in a controlled environment.',
-						'google-site-kit'
-					) }{ ' ' }
-					<MetricsLearnMoreLink />
+					{ createInterpolateElement(
+						__(
+							'Lab data is a snapshot of how your page performs right now, measured in tests we run in a controlled environment. <LearnMoreLink />',
+							'google-site-kit'
+						),
+						{
+							LearnMoreLink: <MetricsLearnMoreLink />,
+						}
+					) }
 				</p>
 			</div>
 			<table className="googlesitekit-table googlesitekit-table--with-list">
@@ -80,15 +86,6 @@ export default function LabReportMetrics( { data, error } ) {
 				</thead>
 				<tbody>
 					<ReportMetric
-						title={ __( 'Total Blocking Time', 'google-site-kit' ) }
-						description={ __(
-							'How long people had to wait after the page loaded before they could click something',
-							'google-site-kit'
-						) }
-						displayValue={ totalBlockingTime.displayValue }
-						category={ getScoreCategory( totalBlockingTime.score ) }
-					/>
-					<ReportMetric
 						title={ _x(
 							'Largest Contentful Paint',
 							'core web vitals name',
@@ -98,9 +95,11 @@ export default function LabReportMetrics( { data, error } ) {
 							'Time it takes for the page to load',
 							'google-site-kit'
 						) }
-						displayValue={ largestContentfulPaint.displayValue }
+						displayValue={
+							largestContentfulPaint?.displayValue || '0'
+						}
 						category={ getScoreCategory(
-							largestContentfulPaint.score
+							largestContentfulPaint?.score || 0
 						) }
 					/>
 					<ReportMetric
@@ -113,10 +112,24 @@ export default function LabReportMetrics( { data, error } ) {
 							'How stable the elements on the page are',
 							'google-site-kit'
 						) }
-						displayValue={ cumulativeLayoutShift.displayValue }
+						displayValue={
+							cumulativeLayoutShift?.displayValue || '0'
+						}
 						category={ getScoreCategory(
-							cumulativeLayoutShift.score
+							cumulativeLayoutShift?.score || 0
 						) }
+					/>
+					<ReportMetric
+						title={ __( 'Total Blocking Time', 'google-site-kit' ) }
+						description={ __(
+							'How long people had to wait after the page loaded before they could click something',
+							'google-site-kit'
+						) }
+						displayValue={ totalBlockingTime?.displayValue || '0' }
+						category={ getScoreCategory(
+							totalBlockingTime?.score || 0
+						) }
+						hintText={ <br /> }
 						isLast
 					/>
 				</tbody>

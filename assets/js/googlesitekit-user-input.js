@@ -25,9 +25,9 @@ import { render } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import './components/legacy-notifications';
 import Root from './components/Root';
 import UserInputApp from './components/user-input/UserInputApp';
+import { VIEW_CONTEXT_USER_INPUT } from './googlesitekit/constants';
 
 // Initialize the app once the DOM is ready.
 domReady( () => {
@@ -37,7 +37,7 @@ domReady( () => {
 
 	if ( renderTarget ) {
 		render(
-			<Root>
+			<Root viewContext={ VIEW_CONTEXT_USER_INPUT }>
 				<UserInputApp />
 			</Root>,
 			renderTarget

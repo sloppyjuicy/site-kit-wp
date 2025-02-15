@@ -25,7 +25,7 @@ import { useCallback } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import {
 	MODULES_PAGESPEED_INSIGHTS,
 	STRATEGY_MOBILE,
@@ -33,14 +33,19 @@ import {
 } from '../../datastore/constants';
 import Accordion from '../../../../components/Accordion';
 import { sanitizeHTML, markdownToHTML, trackEvent } from '../../../../util';
-const { useSelect } = Data;
+import useViewContext from '../../../../hooks/useViewContext';
 
 export default function Recommendation( props ) {
 	const { auditID, title, referenceURL, strategy } = props;
+	const viewContext = useViewContext();
 
 	const onOpen = useCallback( () => {
-		trackEvent( 'pagespeed_widget', 'stack_pack_expand', auditID );
-	}, [ auditID ] );
+		trackEvent(
+			`${ viewContext }_pagespeed-widget`,
+			'stack_pack_expand',
+			auditID
+		);
+	}, [ auditID, viewContext ] );
 
 	const stackPack = useSelect( ( select ) =>
 		select( MODULES_PAGESPEED_INSIGHTS ).getStackPackDescription(

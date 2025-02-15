@@ -19,7 +19,7 @@
 /**
  * External dependencies
  */
-import isEqual from 'lodash/isEqual';
+import { isEqual } from 'lodash';
 
 /**
  * Internal dependencies
@@ -107,6 +107,13 @@ export function combineWidgets(
 ) {
 	const overrideComponents = [];
 	const gridColumnWidths = [ ...columnWidths ];
+
+	if ( ! widgets?.length ) {
+		return {
+			gridColumnWidths,
+			overrideComponents,
+		};
+	}
 
 	let currentState = null;
 	let currentRowIndex = -1;

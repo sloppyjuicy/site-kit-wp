@@ -1,1 +1,11 @@
-["ga4setup", "ideaHubModule", "serviceSetupV2", "userFeedback", "userInput"]
+[
+	"adsPax",
+	"audienceSegmentation",
+	"conversionReporting",
+	"firstPartyMode",
+	"gm3Components",
+	"privacySandboxModule",
+	"rrmModule",
+	"rrmModuleV2",
+	"signInWithGoogleModule"
+]

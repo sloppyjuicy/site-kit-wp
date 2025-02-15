@@ -20,13 +20,13 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import isPlainObject from 'lodash/isPlainObject';
+import { isPlainObject } from 'lodash';
 
 /**
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import { commonActions, combineStores } from 'googlesitekit-data';
 import { MODULES_ADSENSE } from './constants';
 import { stringifyObject } from '../../../util';
 import { createFetchStore } from '../../../googlesitekit/data/create-fetch-store';
@@ -40,7 +40,7 @@ import { validateDimensions, validateMetrics } from '../util/report-validation';
 const fetchGetReportStore = createFetchStore( {
 	baseName: 'getReport',
 	controlCallback: ( { options } ) => {
-		return API.get( 'modules', 'adsense', 'earnings', options );
+		return API.get( 'modules', 'adsense', 'report', options );
 	},
 	reducerCallback: ( state, report, { options } ) => {
 		return {
@@ -59,7 +59,7 @@ const fetchGetReportStore = createFetchStore( {
 
 		// Account for additional date ranges supported by AdSense module in PHP.
 		invariant(
-			'today' === options.dateRange || isValidDateRange( options ),
+			isValidDateRange( options ),
 			'Either date range or start/end dates must be provided for AdSense report.'
 		);
 
@@ -94,7 +94,7 @@ const baseInitialState = {
 
 const baseResolvers = {
 	*getReport( options = {} ) {
-		const registry = yield Data.commonActions.getRegistry();
+		const registry = yield commonActions.getRegistry();
 		const existingReport = registry
 			.select( MODULES_ADSENSE )
 			.getReport( options );
@@ -125,9 +125,8 @@ const baseSelectors = {
 	 *
 	 * @param {Object}         state                Data store's state.
 	 * @param {Object}         options              Options for generating the report.
-	 * @param {string}         options.startDate    Required, unless dateRange is provided. Start date to query report data for as YYYY-mm-dd.
-	 * @param {string}         options.endDate      Required, unless dateRange is provided. Start date to query report data for as YYYY-mm-dd.
-	 * @param {string}         options.dateRange    Required, alternatively to startDate and endDate. A date range string. Default 'last-28-days'.
+	 * @param {string}         options.startDate    Required. Start date to query report data for as YYYY-mm-dd.
+	 * @param {string}         options.endDate      Required. Start date to query report data for as YYYY-mm-dd.
 	 * @param {Array.<string>} options.metrics      Required. List of {@link https://developers.google.com/adsense/management/metrics-dimensions#metrics|metrics} to query.
 	 * @param {Array.<string>} [options.dimensions] Optional. List of {@link https://developers.google.com/adsense/management/metrics-dimensions#dimensions|dimensions} to group results by.
 	 * @param {Array.<Object>} [options.orderby]    Optional. Order definition objects containing 'fieldName' and 'sortOrder'. 'sortOrder' must be either 'ASCENDING' or 'DESCENDING'. Default null.
@@ -141,7 +140,7 @@ const baseSelectors = {
 	},
 };
 
-const store = Data.combineStores( fetchGetReportStore, {
+const store = combineStores( fetchGetReportStore, {
 	initialState: baseInitialState,
 	resolvers: baseResolvers,
 	selectors: baseSelectors,

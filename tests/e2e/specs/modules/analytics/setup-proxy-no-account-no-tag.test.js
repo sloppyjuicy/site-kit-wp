@@ -1,4 +1,22 @@
 /**
+ * Tests for Analytics module setup via proxy with no account and no existing tag.
+ *
+ * Site Kit by Google, Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
  * WordPress dependencies
  */
 import {
@@ -15,6 +33,7 @@ import {
 	resetSiteKit,
 	useRequestInterception,
 	setSearchConsoleProperty,
+	pageWait,
 } from '../../../utils';
 
 describe( 'setting up the Analytics module with no existing account and no existing tag via proxy', () => {
@@ -37,19 +56,15 @@ describe( 'setting up the Analytics module with no existing account and no exist
 								'oauth2callback=1',
 								'code=valid-test-code',
 								// This is how the additional scope is granted.
-								'scope=https://www.googleapis.com/auth/analytics.provision',
+								'scope=https://www.googleapis.com/auth/analytics.provision https://www.googleapis.com/auth/analytics.edit',
 							].join( '&' )
 						),
 					},
 				} );
 			} else if (
-				request.url().match( 'analytics/data/create-account-ticket' )
+				request.url().match( 'analytics-4/data/create-account-ticket' )
 			) {
 				request.respond( { status: 200 } ); // Do nothing for now, return 200 to prevent error.
-			} else if (
-				request.url().match( '/wp-json/google-site-kit/v1/data/' )
-			) {
-				request.respond( { status: 200 } );
 			} else {
 				request.continue();
 			}
@@ -71,7 +86,7 @@ describe( 'setting up the Analytics module with no existing account and no exist
 			text: /connect more services/i,
 		} );
 		await page.waitForSelector(
-			'.googlesitekit-settings-connect-module--analytics'
+			'.googlesitekit-settings-connect-module--analytics-4'
 		);
 		await expect( page ).toClick( '.googlesitekit-cta-link', {
 			text: /set up analytics/i,
@@ -85,9 +100,9 @@ describe( 'setting up the Analytics module with no existing account and no exist
 	} );
 
 	it( 'displays account creation form when user has no Analytics account', async () => {
+		await pageWait( 3000 );
 		await expect( page ).toMatchElement( '.googlesitekit-heading-4', {
 			text: /Create your Analytics account/i,
-			timeout: 5000,
 		} );
 		await expect( page ).toMatchElement( '.mdc-button', {
 			text: /create account/i,
@@ -107,8 +122,8 @@ describe( 'setting up the Analytics module with no existing account and no exist
 			'Test Property Name'
 		);
 		await expect( page ).toFill(
-			'#googlesitekit_analytics_account_create_profile',
-			'Test View Name'
+			'#googlesitekit_analytics_account_create_dataStream',
+			'Test Web Data Stream Name'
 		);
 
 		await expect( page ).toClick(
@@ -123,7 +138,6 @@ describe( 'setting up the Analytics module with no existing account and no exist
 		} );
 
 		await Promise.all( [
-			page.waitForNavigation(), // User is sent directly to OAuth.
 			expect( page ).toClick( '.mdc-button', {
 				text: /create account/i,
 			} ),
@@ -136,14 +150,14 @@ describe( 'setting up the Analytics module with no existing account and no exist
 		let reqBody;
 		await page.waitForRequest(
 			( req ) =>
-				req.url().match( 'analytics/data/create-account-ticket' ) &&
+				req.url().match( 'analytics-4/data/create-account-ticket' ) &&
 				( reqBody = req.postData() )
 		);
 		expect( JSON.parse( reqBody ) ).toMatchObject( {
 			data: {
-				accountName: 'Test Account Name',
+				displayName: 'Test Account Name',
 				propertyName: 'Test Property Name',
-				profileName: 'Test View Name',
+				dataStreamName: 'Test Web Data Stream Name',
 				timezone: 'Etc/GMT',
 			},
 		} );

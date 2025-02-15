@@ -30,19 +30,17 @@ import { render } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import './components/legacy-notifications';
 import Root from './components/Root';
 import SettingsApp from './components/settings/SettingsApp';
+import { VIEW_CONTEXT_SETTINGS } from './googlesitekit/constants';
 
 // Initialize the app once the DOM is ready.
 domReady( () => {
-	const renderTarget = document.getElementById(
-		'googlesitekit-settings-wrapper'
-	);
+	const renderTarget = document.getElementById( 'js-googlesitekit-settings' );
 
 	if ( renderTarget ) {
 		render(
-			<Root>
+			<Root viewContext={ VIEW_CONTEXT_SETTINGS }>
 				<HashRouter>
 					<SettingsApp />
 				</HashRouter>

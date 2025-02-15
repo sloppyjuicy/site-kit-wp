@@ -24,40 +24,52 @@ import PropTypes from 'prop-types';
 /**
  * WordPress dependencies
  */
-import { useCallback, useEffect, useState, useRef } from '@wordpress/element';
+import { useCallback, useEffect, useRef } from '@wordpress/element';
 import { ENTER } from '@wordpress/keycodes';
-import { __ } from '@wordpress/i18n';
+import { sprintf, _n } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Checkbox, Radio } from 'googlesitekit-components';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
-import Radio from '../Radio';
-import Checkbox from '../Checkbox';
-import { Cell, Input, TextField } from '../../material-components';
-const { useSelect, useDispatch } = Data;
+import { CORE_FORMS } from '../../googlesitekit/datastore/forms/constants';
+import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import { Cell } from '../../material-components';
+import {
+	FORM_USER_INPUT_QUESTION_SNAPSHOT,
+	USER_INPUT_QUESTION_POST_FREQUENCY,
+	USER_INPUT_QUESTIONS_PURPOSE,
+} from './util/constants';
+import { trackEvent } from '../../util';
+import useViewContext from '../../hooks/useViewContext';
 
 export default function UserInputSelectOptions( {
 	slug,
+	descriptions,
 	options,
 	max,
 	next,
-	isActive,
+	showInstructions,
+	alignLeftOptions,
 } ) {
+	const viewContext = useViewContext();
 	const values = useSelect(
 		( select ) => select( CORE_USER ).getUserInputSetting( slug ) || []
 	);
-	const [ other, setOther ] = useState(
-		values.filter( ( value ) => ! options[ value ] )[ 0 ] || ''
+
+	const isSavingSettings = useSelect( ( select ) =>
+		select( CORE_USER ).isSavingUserInputSettings( values )
+	);
+	const isNavigating = useSelect( ( select ) =>
+		select( CORE_LOCATION ).isNavigating()
 	);
 	const { setUserInputSetting } = useDispatch( CORE_USER );
-	const inputRef = useRef();
 	const optionsRef = useRef();
-	const [ disabled, setDisabled ] = useState( false );
 
 	useEffect( () => {
-		if ( ! optionsRef?.current || ! isActive ) {
+		if ( ! optionsRef?.current ) {
 			return;
 		}
 
@@ -82,85 +94,58 @@ export default function UserInputSelectOptions( {
 			);
 			focusOption( el );
 		}
-	}, [ isActive, max ] );
+	}, [ max ] );
 
-	useEffect( () => {
-		if ( max > 1 && max === values.length && other.trim().length === 0 ) {
-			setDisabled( true );
-		}
-	}, [ setDisabled, max, values, other ] );
+	const { setValues } = useDispatch( CORE_FORMS );
 
 	const onClick = useCallback(
 		( event ) => {
 			const { target } = event;
-			const { value, checked, name, type, id } = target;
+			const { value, checked } = target;
 
 			const newValues = new Set( [ value, ...values ] );
 			if ( ! checked ) {
 				newValues.delete( value );
 			}
 
-			if ( name === `${ slug }-other` && checked === true ) {
-				if ( inputRef.current ) {
-					inputRef.current.inputElement.focus();
-				}
-				setDisabled( false );
-			}
+			const gaEventName =
+				slug === USER_INPUT_QUESTION_POST_FREQUENCY
+					? 'content_frequency_question_answer'
+					: `site_${ slug }_question_answer`;
 
-			if ( type === 'radio' && id === `${ slug }-other` ) {
-				if ( inputRef.current ) {
-					inputRef.current.inputElement.focus();
-				}
-				setDisabled( false );
-			}
+			const checkedValues = Array.from( newValues ).slice( 0, max );
 
-			if (
-				type !== 'radio' &&
-				newValues.size === max &&
-				! newValues.has( '' ) &&
-				! newValues.has( other )
-			) {
-				setDisabled( true );
-			} else {
-				setDisabled( false );
-			}
-
-			setUserInputSetting(
-				slug,
-				Array.from( newValues ).slice( 0, max )
+			trackEvent(
+				`${ viewContext }_kmw`,
+				gaEventName,
+				checkedValues.join()
 			);
+
+			if ( slug === USER_INPUT_QUESTIONS_PURPOSE ) {
+				setValues( FORM_USER_INPUT_QUESTION_SNAPSHOT, {
+					[ slug ]: values,
+				} );
+			}
+
+			setUserInputSetting( slug, checkedValues );
 		},
-		[ max, other, setUserInputSetting, slug, values ]
+		[ max, setUserInputSetting, slug, values, viewContext, setValues ]
 	);
 
 	const onKeyDown = useCallback(
 		( event ) => {
 			if (
 				event.keyCode === ENTER &&
-				( other.trim().length > 0 ||
-					( values.length > 0 &&
-						values.length <= max &&
-						! values.includes( '' ) ) ) &&
+				values.length > 0 &&
+				values.length <= max &&
+				! values.includes( '' ) &&
 				next &&
 				typeof next === 'function'
 			) {
 				next();
 			}
 		},
-		[ values, other, next, max ]
-	);
-
-	const onOtherChange = useCallback(
-		( { target } ) => {
-			const newValues = [
-				target.value,
-				...values.filter( ( value ) => !! options[ value ] ),
-			];
-
-			setOther( target.value );
-			setUserInputSetting( slug, newValues.slice( 0, max ) );
-		},
-		[ max, setUserInputSetting, slug, values, options ]
+		[ values, next, max ]
 	);
 
 	const onClickProps = {
@@ -170,12 +155,17 @@ export default function UserInputSelectOptions( {
 	const ListComponent = max === 1 ? Radio : Checkbox;
 
 	const items = Object.keys( options ).map( ( optionSlug ) => {
+		if ( 'sell_products_or_service' === optionSlug ) {
+			return false;
+		}
+
 		const props = {
 			id: `${ slug }-${ optionSlug }`,
 			value: optionSlug,
+			description: descriptions?.[ optionSlug ],
 			checked: values.includes( optionSlug ),
-			tabIndex: ! isActive ? '-1' : undefined,
 			onKeyDown,
+			alignLeft: alignLeftOptions,
 			...onClickProps,
 		};
 
@@ -185,6 +175,10 @@ export default function UserInputSelectOptions( {
 			props.name = `${ slug }-${ optionSlug }`;
 		} else {
 			props.name = slug;
+		}
+
+		if ( isSavingSettings || isNavigating ) {
+			props.disabled = true;
 		}
 
 		return (
@@ -200,103 +194,51 @@ export default function UserInputSelectOptions( {
 	} );
 
 	return (
-		<Cell lgStart={ 6 } lgSize={ 6 } mdSize={ 8 } smSize={ 4 }>
+		<Cell
+			className="googlesitekit-user-input__select-options-wrapper"
+			lgStart={ 6 }
+			lgSize={ 6 }
+			mdSize={ 8 }
+			smSize={ 4 }
+		>
+			{ showInstructions && (
+				<p className="googlesitekit-user-input__select-instruction">
+					<span>
+						{ sprintf(
+							/* translators: %s: number of answers allowed. */
+							_n(
+								'Select only %d answer',
+								'Select up to %d answers',
+								max,
+								'google-site-kit'
+							),
+							max
+						) }
+					</span>
+				</p>
+			) }
 			<div
 				className="googlesitekit-user-input__select-options"
 				ref={ optionsRef }
 			>
 				{ items }
-
-				<div className="googlesitekit-user-input__select-option">
-					<ListComponent
-						id={ `${ slug }-other` }
-						name={ max === 1 ? slug : `${ slug }-other` }
-						value={ other }
-						checked={ values.includes( other.trim() ) }
-						disabled={
-							max > 1 &&
-							values.length >= max &&
-							! values.includes( other.trim() )
-						}
-						tabIndex={ ! isActive ? '-1' : undefined }
-						onKeyDown={ onKeyDown }
-						{ ...onClickProps }
-					>
-						{ __( 'Other:', 'google-site-kit' ) }
-					</ListComponent>
-
-					<TextField
-						label={ __(
-							'Type your own answer',
-							'google-site-kit'
-						) }
-						noLabel
-					>
-						<Input
-							id={ `${ slug }-select-options` }
-							value={ other }
-							onChange={ onOtherChange }
-							ref={ inputRef }
-							disabled={ disabled }
-							tabIndex={
-								! values.includes( other.trim() ) || ! isActive
-									? '-1'
-									: undefined
-							}
-							onKeyDown={ onKeyDown }
-							maxLength={ 100 }
-						/>
-					</TextField>
-					<label
-						htmlFor={ `${ slug }-select-options` }
-						className="screen-reader-text"
-					>
-						{ __(
-							'Enter your own answer here',
-							'google-site-kit'
-						) }
-					</label>
-				</div>
 			</div>
-
-			<p className="googlesitekit-user-input__note">
-				{ max === 1 && (
-					<span>
-						{ __(
-							'Choose up to one (1) answer',
-							'google-site-kit'
-						) }
-					</span>
-				) }
-				{ max === 2 && (
-					<span>
-						{ __(
-							'Choose up to two (2) answers',
-							'google-site-kit'
-						) }
-					</span>
-				) }
-				{ max === 3 && (
-					<span>
-						{ __(
-							'Choose up to three (3) answers',
-							'google-site-kit'
-						) }
-					</span>
-				) }
-			</p>
 		</Cell>
 	);
 }
 
 UserInputSelectOptions.propTypes = {
 	slug: PropTypes.string.isRequired,
+	descriptions: PropTypes.shape( {} ),
 	options: PropTypes.shape( {} ).isRequired,
 	max: PropTypes.number,
 	next: PropTypes.func,
-	isActive: PropTypes.bool,
+	showInstructions: PropTypes.bool,
+	alignLeftOptions: PropTypes.bool,
 };
 
 UserInputSelectOptions.defaultProps = {
 	max: 1,
+	showInstructions: false,
+	alignLeftOptions: false,
 };

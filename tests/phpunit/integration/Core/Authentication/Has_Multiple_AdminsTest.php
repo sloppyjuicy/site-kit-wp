@@ -30,8 +30,8 @@ class Has_Multiple_AdminsTest extends TestCase {
 	 */
 	protected $transients;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 		$this->context    = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
 		$this->transients = new Transients( $this->context );
 	}
@@ -49,5 +49,4 @@ class Has_Multiple_AdminsTest extends TestCase {
 		$this->transients->delete( Has_Multiple_Admins::OPTION );
 		$this->assertTrue( $has_multiple_admins->get() );
 	}
-
 }

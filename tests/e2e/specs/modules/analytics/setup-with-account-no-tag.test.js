@@ -37,6 +37,7 @@ import {
 	pageWait,
 	step,
 } from '../../../utils';
+import * as fixtures from '../../../../../assets/js/modules/analytics-4/datastore/__fixtures__';
 
 async function proceedToSetUpAnalytics() {
 	await step(
@@ -47,13 +48,13 @@ async function proceedToSetUpAnalytics() {
 			} ),
 			page.waitForSelector( '.googlesitekit-setup-module__inputs' ),
 			page.waitForRequest( ( req ) =>
-				req.url().match( 'analytics/data' )
+				req.url().match( 'analytics-4/data' )
 			),
 		] )
 	);
 }
 
-const setReferenceURL = async () => {
+const setReferenceURL = () => {
 	return wpApiFetch( {
 		path: 'google-site-kit/v1/e2e/reference-url',
 		method: 'post',
@@ -71,7 +72,9 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			if (
 				request
 					.url()
-					.startsWith( 'https://accounts.google.com/o/oauth2/auth' )
+					.startsWith(
+						'https://accounts.google.com/o/oauth2/v2/auth'
+					)
 			) {
 				request.respond( {
 					status: 302,
@@ -88,29 +91,45 @@ describe( 'setting up the Analytics module with an existing account and no exist
 					},
 				} );
 			} else if (
-				request.url().match( '/wp-json/google-site-kit/v1/data/' )
-			) {
-				request.respond( {
-					status: 200,
-				} );
-			} else if (
 				request
 					.url()
 					.match(
 						'google-site-kit/v1/modules/search-console/data/searchanalytics'
 					)
 			) {
-				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+				request.respond( { status: 200, body: JSON.stringify( [] ) } );
+			} else if ( request.url().match( 'analytics-4/data/report?' ) ) {
+				request.respond( {
+					status: 200,
+					body: JSON.stringify( {} ),
+				} );
+			} else if (
+				request.url().match( 'analytics-4/data/sync-custom-dimensions' )
+			) {
+				request.respond( {
+					status: 200,
+					body: '[]',
+				} );
 			} else if (
 				request
 					.url()
 					.match(
-						'/wp-json/google-site-kit/v1/modules/analytics/data/report?'
+						'/wp-json/google-site-kit/v1/modules/analytics-4/data/conversion-events'
 					)
 			) {
 				request.respond( {
 					status: 200,
-					body: JSON.stringify( { placeholder_response: true } ),
+					body: JSON.stringify( fixtures.conversionEvents ),
+				} );
+			} else if ( request.url().match( 'user/data/audience-settings' ) ) {
+				request.respond( {
+					status: 200,
+					body: JSON.stringify( {
+						configuredAudiences: [
+							fixtures.availableAudiences[ 2 ].name,
+						],
+						isAudienceSegmentationWidgetHidden: false,
+					} ),
 				} );
 			} else if (
 				request
@@ -118,6 +137,75 @@ describe( 'setting up the Analytics module with an existing account and no exist
 					.match( 'google-site-kit/v1/modules/analytics/data/goals' )
 			) {
 				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+			} else if (
+				request
+					.url()
+					.match( 'analytics-4/data/enhanced-measurement-settings' )
+			) {
+				request.respond( {
+					status: 200,
+					body: JSON.stringify(
+						fixtures.defaultEnhancedMeasurementSettings
+					),
+				} );
+			} else if (
+				request.url().match( 'analytics-4/data/create-property' )
+			) {
+				request.respond( {
+					body: JSON.stringify( fixtures.createProperty ),
+					status: 200,
+				} );
+			} else if (
+				request
+					.url()
+					.match(
+						'google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+					)
+			) {
+				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+			} else if (
+				request.url().match( 'analytics-4/data/create-webdatastream' )
+			) {
+				request.respond( {
+					body: JSON.stringify( fixtures.createWebDataStream ),
+					status: 200,
+				} );
+			} else if (
+				request.url().match( 'analytics-4/data/google-tag-settings' )
+			) {
+				request.respond( {
+					body: JSON.stringify( fixtures.googleTagSettings ),
+					status: 200,
+				} );
+			} else if (
+				request.url().match( 'analytics-4/data/container-lookup' )
+			) {
+				const requestURL = new URL( request.url() );
+				const destinationID =
+					requestURL.searchParams.get( 'destinationID' );
+				const googleTagID = global.googlesitekit.data
+					.select( 'modules/analytics-4' )
+					.googleTagID();
+				const container = {
+					...fixtures.containerE2E[ 'G-500' ],
+					tagIds: [ destinationID, googleTagID ],
+				};
+				request.respond( {
+					body: JSON.stringify( container ),
+					status: 200,
+				} );
+			} else if (
+				request.url().match( 'analytics-4/data/container-destinations' )
+			) {
+				const googleTagID = global.googlesitekit.data
+					.select( 'modules/analytics-4' )
+					.googleTagID();
+				// eslint-disable-next-line sitekit/acronym-case
+				const destination = { destinationId: googleTagID };
+				request.respond( {
+					status: 200,
+					body: JSON.stringify( [ destination ] ),
+				} );
 			} else {
 				request.continue();
 			}
@@ -138,7 +226,7 @@ describe( 'setting up the Analytics module with an existing account and no exist
 				text: /connect more services/i,
 			} );
 			await page.waitForSelector(
-				'.googlesitekit-settings-connect-module--analytics'
+				'.googlesitekit-settings-connect-module--analytics-4'
 			);
 		} );
 
@@ -151,49 +239,49 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			await proceedToSetUpAnalytics();
 
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test account a/i,
+				text: /example com/i,
 			} );
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test property x/i,
+				text: /example property/i,
 			} );
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test profile x/i,
+				text: /test ga4 webdatastream/i,
 			} );
 
 			// Select Test Account B
 			await step( 'select test account B', async () => {
 				await expect( page ).toClick( '.mdc-select', {
-					text: /test account a/i,
+					text: /example com/i,
 				} );
 				await Promise.all( [
 					expect( page ).toClick(
 						'.mdc-menu-surface--open .mdc-list-item',
 						{
-							text: /test account b/i,
+							text: /example net/i,
 						}
 					),
 					page.waitForResponse( ( res ) =>
-						res.url().match( 'modules/analytics/data' )
+						res.url().match( 'modules/analytics-4/data' )
 					),
 				] );
 
-				// Selects reload with properties and profiles for Test Account B
+				// Selects reload with properties and web data streams for Test Account B
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test account b/i,
+						text: /example net/i,
 					}
 				);
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test property y/i,
+						text: /example property/i,
 					}
 				);
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test profile y/i,
+						text: /another webdatastream/i,
 					}
 				);
 			} );
@@ -201,37 +289,37 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			// Select Property Z
 			await step( 'select property Z', async () => {
 				await expect( page ).toClick( '.mdc-select', {
-					text: /test property y/i,
+					text: /example net/i,
 				} );
 				await Promise.all( [
 					expect( page ).toClick(
 						'.mdc-menu-surface--open .mdc-list-item',
 						{
-							text: /test property z/i,
+							text: /example org/i,
 						}
 					),
 					page.waitForResponse( ( res ) =>
-						res.url().match( 'modules/analytics/data' )
+						res.url().match( 'modules/analytics-4/data' )
 					),
 				] );
 
-				// Selects reload with properties and profiles for Test Profile Z
+				// Selects reload with properties and web data streams for Test Profile Z
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test account b/i,
+						text: /example org/i,
 					}
 				);
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test property z/i,
+						text: /example property z/i,
 					}
 				);
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test profile z/i,
+						text: /third webdatastream/i,
 					}
 				);
 			} );
@@ -239,13 +327,17 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			await step( 'wait and click configure button', async () => {
 				await pageWait( 500 );
 				await expect( page ).toClick( 'button', {
-					text: /configure analytics/i,
+					text: /complete setup/i,
 				} );
 			} );
 
 			await step( 'redirect and check notification bar', async () => {
+				await page.waitForNavigation();
 				await page.waitForSelector(
-					'.googlesitekit-publisher-win--win-success'
+					'.googlesitekit-publisher-win__title',
+					{
+						timeout: 5_000,
+					}
 				);
 				await expect( page ).toMatchElement(
 					'.googlesitekit-publisher-win__title',
@@ -261,21 +353,15 @@ describe( 'setting up the Analytics module with an existing account and no exist
 
 			await proceedToSetUpAnalytics();
 
-			await expect(
-				page
-			).toMatchElement(
-				'.googlesitekit-analytics__select-account .mdc-select__selected-text',
-				{ text: '' }
+			await expect( page ).not.toMatchElement(
+				'.googlesitekit-analytics-4__select-property'
 			);
 			await expect( page ).not.toMatchElement(
-				'.googlesitekit-analytics__select-property'
-			);
-			await expect( page ).not.toMatchElement(
-				'.googlesitekit-analytics__select-profile'
+				'.googlesitekit-analytics-4__select-webdatastream'
 			);
 
 			await expect( page ).toMatchElement( 'button[disabled]', {
-				text: /configure analytics/i,
+				text: /complete setup/i,
 			} );
 
 			// Select Test Account A
@@ -283,10 +369,11 @@ describe( 'setting up the Analytics module with an existing account and no exist
 				await expect( page ).toClick(
 					'.googlesitekit-analytics__select-account .mdc-select__selected-text'
 				);
+
 				await expect( page ).toClick(
 					'.mdc-menu-surface--open .mdc-list-item',
 					{
-						text: /test account a/i,
+						text: /example com/i,
 					}
 				);
 
@@ -294,23 +381,26 @@ describe( 'setting up the Analytics module with an existing account and no exist
 				await expect( page ).toMatchElement(
 					'.mdc-select__selected-text',
 					{
-						text: /test account a/i,
+						text: /example com/i,
 					}
 				);
 				// Property dropdown should not select anything because there is no property associated with the current reference URL.
 				await expect( page ).toMatchElement(
-					'.googlesitekit-analytics__select-property',
+					'.mdc-select__selected-text',
 					{
-						text: /property/i,
+						text: /set up a new property/i,
 					}
 				);
-				// Profile dropdown should not be displayed.
-				await expect( page ).not.toMatchElement(
-					'.googlesitekit-analytics__select-profile'
+				// Web data stream should not be preselected.
+				await expect( page ).toMatchElement(
+					'.mdc-select__selected-text',
+					{
+						text: /set up a new web data stream/i,
+					}
 				);
 			} );
 
-			// Intentionally does not submit to trigger property & profile creation requests.
+			// Intentionally does not submit to trigger property & webdatastream creation requests.
 		} );
 	} );
 
@@ -328,7 +418,7 @@ describe( 'setting up the Analytics module with an existing account and no exist
 				text: /connect more services/i,
 			} );
 			await page.waitForSelector(
-				'.googlesitekit-settings-connect-module--analytics'
+				'.googlesitekit-settings-connect-module--analytics-4'
 			);
 		} );
 
@@ -340,13 +430,13 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			await proceedToSetUpAnalytics();
 
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test account a/i,
+				text: /example com/i,
 			} );
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test property x/i,
+				text: /example property/i,
 			} );
 			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
-				text: /test profile x/i,
+				text: /test ga4 webdatastream/i,
 			} );
 
 			await expect( page ).toClick(
@@ -369,34 +459,21 @@ describe( 'setting up the Analytics module with an existing account and no exist
 			await expect( page ).toMatchElement( 'button', {
 				text: /re-fetch my account/i,
 			} );
-			await Promise.all( [
-				page.waitForResponse( ( res ) =>
-					res.url().match( 'modules/analytics/data' )
-				),
-				expect( page ).toClick( 'button', {
-					text: /re-fetch my account/i,
-				} ),
-			] );
+
+			await expect( page ).toClick( 'button', {
+				text: /re-fetch my account/i,
+			} );
 
 			// Dropdowns are revealed and reset on refetch.
-			await expect(
-				page
-			).toMatchElement(
-				'.googlesitekit-analytics__select-account .mdc-select__selected-text',
-				{ text: '' }
-			);
-			await expect(
-				page
-			).toMatchElement(
-				'.googlesitekit-analytics__select-property .mdc-select__selected-text',
-				{ text: '' }
-			);
-			await expect(
-				page
-			).toMatchElement(
-				'.googlesitekit-analytics__select-profile .mdc-select__selected-text',
-				{ text: '' }
-			);
+			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
+				text: /example com/i,
+			} );
+			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
+				text: /example property/i,
+			} );
+			await expect( page ).toMatchElement( '.mdc-select__selected-text', {
+				text: /test ga4 webdatastream/i,
+			} );
 		} );
 	} );
 } );

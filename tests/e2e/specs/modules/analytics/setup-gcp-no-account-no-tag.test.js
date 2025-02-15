@@ -35,15 +35,18 @@ import {
 	setSearchConsoleProperty,
 	pageWait,
 } from '../../../utils';
+import * as fixtures from '../../../../../assets/js/modules/analytics-4/datastore/__fixtures__';
 
 describe( 'setting up the Analytics module using GCP auth with no existing account and no existing tag', () => {
 	beforeAll( async () => {
 		await page.setRequestInterception( true );
 		useRequestInterception( ( request ) => {
+			const measurementID = 'G-2B7M8YQ1K6';
+			const containerMock = fixtures.container[ measurementID ];
+
+			const url = request.url();
 			if (
-				request
-					.url()
-					.startsWith( 'https://accounts.google.com/o/oauth2/auth' )
+				url.startsWith( 'https://accounts.google.com/o/oauth2/v2/auth' )
 			) {
 				request.respond( {
 					status: 302,
@@ -60,36 +63,77 @@ describe( 'setting up the Analytics module using GCP auth with no existing accou
 					},
 				} );
 			} else if (
-				request.url().match( '/wp-json/google-site-kit/v1/data/' )
+				url.match( 'analytics-4/data/properties' ) ||
+				url.match( 'analytics-4/data/conversion-events' ) ||
+				url.match( 'user/data/survey-timeouts' ) ||
+				url.match( 'search-console/data/searchanalytics' )
 			) {
 				request.respond( {
 					status: 200,
+					body: '[]',
 				} );
 			} else if (
 				request
 					.url()
-					.match(
-						'/wp-json/google-site-kit/v1/modules/analytics/data/report?'
-					)
+					.match( 'analytics-4/data/enhanced-measurement-settings' )
 			) {
 				request.respond( {
 					status: 200,
-					body: JSON.stringify( { placeholder_response: true } ),
+					body: JSON.stringify(
+						fixtures.defaultEnhancedMeasurementSettings
+					),
+				} );
+			} else if ( url.match( 'analytics-4/data/report?' ) ) {
+				request.respond( {
+					status: 200,
+					body: '{}',
+				} );
+			} else if ( url.match( 'pagespeed-insights/data/pagespeed' ) ) {
+				request.respond( { status: 200, body: '{}' } );
+			} else if ( url.match( 'analytics-4/data/create-property' ) ) {
+				request.respond( {
+					body: JSON.stringify( fixtures.createProperty ),
+					status: 200,
+				} );
+			} else if ( url.match( 'analytics-4/data/create-webdatastream' ) ) {
+				request.respond( {
+					body: JSON.stringify( fixtures.createWebDataStream ),
+					status: 200,
+				} );
+			} else if ( url.match( 'analytics-4/data/google-tag-settings' ) ) {
+				request.respond( {
+					body: JSON.stringify( fixtures.googleTagSettings ),
+					status: 200,
+				} );
+			} else if ( url.match( 'user/data/audience-settings' ) ) {
+				request.respond( {
+					status: 200,
+					body: JSON.stringify( {
+						configuredAudiences: [
+							fixtures.availableAudiences[ 2 ].name,
+						],
+						isAudienceSegmentationWidgetHidden: false,
+					} ),
 				} );
 			} else if (
-				request
-					.url()
-					.match(
-						'google-site-kit/v1/modules/search-console/data/searchanalytics'
-					)
+				request.url().match( 'analytics-4/data/container-lookup' )
 			) {
-				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+				request.respond( {
+					body: JSON.stringify( containerMock ),
+					status: 200,
+				} );
+			} else if ( request.url().match( 'analytics-4/data/property' ) ) {
+				request.respond( {
+					body: JSON.stringify( fixtures.properties[ 1 ] ),
+					status: 200,
+				} );
 			} else if (
-				request
-					.url()
-					.match( 'google-site-kit/v1/modules/analytics/data/goals' )
+				request.url().match( 'analytics-4/data/sync-custom-dimensions' )
 			) {
-				request.respond( { status: 200, body: JSON.stringify( {} ) } );
+				request.respond( {
+					status: 200,
+					body: '[]',
+				} );
 			} else {
 				request.continue();
 			}
@@ -117,7 +161,7 @@ describe( 'setting up the Analytics module using GCP auth with no existing accou
 			text: /connect more services/i,
 		} );
 		await page.waitForSelector(
-			'.googlesitekit-settings-connect-module--analytics'
+			'.googlesitekit-settings-connect-module--analytics-4'
 		);
 
 		await Promise.all( [
@@ -133,14 +177,14 @@ describe( 'setting up the Analytics module using GCP auth with no existing accou
 		await page.evaluate( () => {
 			window.open = () => {
 				window._e2eApiFetch( {
-					path:
-						'google-site-kit/v1/e2e/setup/analytics/account-created',
+					path: 'google-site-kit/v1/e2e/setup/analytics/account-created',
 					method: 'post',
 				} );
 			};
 		} );
 
 		await pageWait( 1000 );
+
 		// Clicking Create Account button will switch API mock plugins on the server to the one that has accounts.
 		await Promise.all( [
 			page.waitForResponse( ( res ) =>
@@ -157,37 +201,34 @@ describe( 'setting up the Analytics module using GCP auth with no existing accou
 
 		await Promise.all( [
 			page.waitForResponse( ( req ) =>
-				req.url().match( 'analytics/data/accounts-properties-profiles' )
+				req.url().match( 'analytics-4/data/account-summaries' )
 			),
-			expect( page ).toClick( '.googlesitekit-cta-link', {
+			expect( page ).toClick( '.mdc-button', {
 				text: /Re-fetch My Account/i,
 			} ),
 		] );
 
 		await page.waitForSelector( '.googlesitekit-setup-module__inputs' );
 
-		await expect(
-			page
-		).toMatchElement(
+		await expect( page ).toMatchElement(
 			'.googlesitekit-analytics__select-account .mdc-select__selected-text',
 			{ text: '' }
 		);
-		await expect(
-			page
-		).toMatchElement(
-			'.googlesitekit-analytics__select-property .mdc-select__selected-text',
-			{ text: '' }
+
+		await expect( page ).toClick(
+			'.googlesitekit-analytics__select-account'
 		);
-		await expect(
-			page
-		).toMatchElement(
-			'.googlesitekit-analytics__select-profile .mdc-select__selected-text',
-			{ text: '' }
+
+		await expect( page ).toClick(
+			'.mdc-menu-surface--open .mdc-list-item',
+			{
+				text: /example com/i,
+			}
 		);
 
 		await pageWait( 1000 );
 		await expect( page ).toClick( 'button', {
-			text: /configure analytics/i,
+			text: /complete setup/i,
 		} );
 
 		await page.waitForSelector(

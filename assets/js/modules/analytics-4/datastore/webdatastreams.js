@@ -20,20 +20,25 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import pick from 'lodash/pick';
-import difference from 'lodash/difference';
+import { pick, difference } from 'lodash';
 
 /**
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	createRegistrySelector,
+	commonActions,
+	combineStores,
+} from 'googlesitekit-data';
 import { createValidatedAction } from '../../../googlesitekit/data/utils';
 import { MODULES_ANALYTICS_4, MAX_WEBDATASTREAMS_PER_BATCH } from './constants';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
 import { createFetchStore } from '../../../googlesitekit/data/create-fetch-store';
-import { isValidPropertyID } from '../utils/validation';
-const { createRegistryControl, createRegistrySelector } = Data;
+import {
+	isValidPropertyID,
+	isValidWebDataStreamName,
+} from '../utils/validation';
 
 const fetchGetWebDataStreamsStore = createFetchStore( {
 	baseName: 'getWebDataStreams',
@@ -111,9 +116,10 @@ const fetchGetWebDataStreamsBatchStore = createFetchStore( {
 
 const fetchCreateWebDataStreamStore = createFetchStore( {
 	baseName: 'createWebDataStream',
-	controlCallback( { propertyID } ) {
+	controlCallback( { propertyID, displayName } ) {
 		return API.set( 'modules', 'analytics-4', 'create-webdatastream', {
 			propertyID,
+			displayName,
 		} );
 	},
 	reducerCallback( state, webDataStream, { propertyID } ) {
@@ -128,19 +134,20 @@ const fetchCreateWebDataStreamStore = createFetchStore( {
 			},
 		};
 	},
-	argsToParams( propertyID ) {
-		return { propertyID };
+	argsToParams( propertyID, displayName ) {
+		return { propertyID, displayName };
 	},
-	validateParams( { propertyID } = {} ) {
+	validateParams( { propertyID, displayName } = {} ) {
 		invariant(
 			isValidPropertyID( propertyID ),
 			'A valid GA4 propertyID is required.'
 		);
+		invariant(
+			isValidWebDataStreamName( displayName ),
+			'A valid web data stream name is required.'
+		);
 	},
 } );
-
-// Actions
-const WAIT_FOR_WEBDATASTREAMS = 'WAIT_FOR_WEBDATASTREAMS';
 
 const baseInitialState = {
 	webdatastreams: {},
@@ -151,21 +158,23 @@ const baseActions = {
 	 * Creates a new GA4 web data stream.
 	 *
 	 * @since 1.31.0
+	 * @since 1.124.0 Added displayName parameter.
 	 *
-	 * @param {string} propertyID GA4 property ID.
+	 * @param {string} propertyID  GA4 property ID.
+	 * @param {string} displayName A web data stream name.
 	 * @return {Object} Object with `response` and `error`.
 	 */
 	createWebDataStream: createValidatedAction(
-		( propertyID ) => {
+		( propertyID, displayName ) => {
 			invariant( propertyID, 'GA4 propertyID is required.' );
+			invariant( displayName, 'Web data stream name is required.' );
 		},
-		function* ( propertyID ) {
-			const {
-				response,
-				error,
-			} = yield fetchCreateWebDataStreamStore.actions.fetchCreateWebDataStream(
-				propertyID
-			);
+		function* ( propertyID, displayName ) {
+			const { response, error } =
+				yield fetchCreateWebDataStreamStore.actions.fetchCreateWebDataStream(
+					propertyID,
+					displayName
+				);
 			return { response, error };
 		}
 	),
@@ -179,41 +188,16 @@ const baseActions = {
 	 * @return {Object|null} Matched web data stream object on success, otherwise NULL.
 	 */
 	*matchWebDataStream( propertyID ) {
-		yield baseActions.waitForWebDataStreams( propertyID );
-
-		const registry = yield Data.commonActions.getRegistry();
-		return registry
-			.select( MODULES_ANALYTICS_4 )
-			.getMatchingWebDataStream( propertyID );
-	},
-
-	/**
-	 * Waits for web data streams to be loaded for a property.
-	 *
-	 * @since 1.31.0
-	 *
-	 * @param {string} propertyID GA4 property ID.
-	 */
-	*waitForWebDataStreams( propertyID ) {
-		yield {
-			payload: { propertyID },
-			type: WAIT_FOR_WEBDATASTREAMS,
-		};
+		const registry = yield commonActions.getRegistry();
+		return yield commonActions.await(
+			registry
+				.resolveSelect( MODULES_ANALYTICS_4 )
+				.getMatchingWebDataStreamByPropertyID( propertyID )
+		);
 	},
 };
 
-const baseControls = {
-	[ WAIT_FOR_WEBDATASTREAMS ]: createRegistryControl(
-		( { __experimentalResolveSelect } ) => {
-			return async ( { payload } ) => {
-				const { propertyID } = payload;
-				await __experimentalResolveSelect(
-					MODULES_ANALYTICS_4
-				).getWebDataStreams( propertyID );
-			};
-		}
-	),
-};
+const baseControls = {};
 
 const baseReducer = ( state, { type } ) => {
 	switch ( type ) {
@@ -223,9 +207,21 @@ const baseReducer = ( state, { type } ) => {
 	}
 };
 
+function* resolveGetWebDataStreams( propertyID ) {
+	const { resolveSelect } = yield commonActions.getRegistry();
+
+	yield commonActions.await(
+		resolveSelect( MODULES_ANALYTICS_4 ).getWebDataStreams( propertyID )
+	);
+}
+
 const baseResolvers = {
 	*getWebDataStreams( propertyID ) {
-		const registry = yield Data.commonActions.getRegistry();
+		if ( ! isValidPropertyID( propertyID ) ) {
+			return;
+		}
+
+		const registry = yield commonActions.getRegistry();
 		// Only fetch web data streams if there are none in the store for the given property.
 		const webdatastreams = registry
 			.select( MODULES_ANALYTICS_4 )
@@ -237,7 +233,7 @@ const baseResolvers = {
 		}
 	},
 	*getWebDataStreamsBatch( propertyIDs ) {
-		const registry = yield Data.commonActions.getRegistry();
+		const registry = yield commonActions.getRegistry();
 		const webdatastreams =
 			registry
 				.select( MODULES_ANALYTICS_4 )
@@ -264,6 +260,8 @@ const baseResolvers = {
 			}
 		}
 	},
+	getMatchingWebDataStreamByPropertyID: resolveGetWebDataStreams,
+	doesWebDataStreamExist: resolveGetWebDataStreams,
 };
 
 const baseSelectors = {
@@ -281,32 +279,82 @@ const baseSelectors = {
 	},
 
 	/**
-	 * Gets matched web data stream for selected property.
+	 * Gets matched web data stream from a list of web data streams.
 	 *
 	 * @since 1.31.0
+	 * @since 1.90.0 Updated to match a data stream from a list of provided web data streams.
+	 *
+	 * @param {Object} state       Data store's state.
+	 * @param {Array}  datastreams A list of web data streams.
+	 * @return {(Object|null)} A web data stream object if found, otherwise null.
+	 */
+	getMatchingWebDataStream: createRegistrySelector(
+		( select ) => ( state, datastreams ) => {
+			const matchedWebDataStreams =
+				select( MODULES_ANALYTICS_4 ).getMatchingWebDataStreams(
+					datastreams
+				);
+
+			return matchedWebDataStreams[ 0 ] || null;
+		}
+	),
+
+	/**
+	 * Gets web data streams that match the current reference URL.
+	 *
+	 * @since 1.98.0
+	 *
+	 * @param {Object} state       Data store's state.
+	 * @param {Array}  datastreams A list of web data streams.
+	 * @return {Array.<Object>} An array of found matched web data streams.
+	 */
+	getMatchingWebDataStreams: createRegistrySelector(
+		( select ) => ( state, datastreams ) => {
+			invariant(
+				Array.isArray( datastreams ),
+				'datastreams must be an array.'
+			);
+
+			const matchedWebDataStreams = [];
+
+			for ( const datastream of datastreams ) {
+				if (
+					select( CORE_SITE ).isSiteURLMatch(
+						// eslint-disable-next-line sitekit/acronym-case
+						datastream.webStreamData?.defaultUri
+					)
+				) {
+					matchedWebDataStreams.push( datastream );
+				}
+			}
+
+			return matchedWebDataStreams;
+		}
+	),
+
+	/**
+	 * Gets matched web data stream for selected property.
+	 *
+	 * @since 1.90.0
 	 *
 	 * @param {Object} state      Data store's state.
 	 * @param {string} propertyID The GA4 property ID to find matched web data stream.
 	 * @return {(Object|null|undefined)} A web data stream object if found, otherwise null; `undefined` if web data streams are not loaded.
 	 */
-	getMatchingWebDataStream: createRegistrySelector(
-		( select ) => ( state, propertyID ) => {
-			const datastreams = select( MODULES_ANALYTICS_4 ).getWebDataStreams(
-				propertyID
-			);
+	getMatchingWebDataStreamByPropertyID: createRegistrySelector(
+		( select ) => ( _state, propertyID ) => {
+			const datastreams =
+				select( MODULES_ANALYTICS_4 ).getWebDataStreams( propertyID );
 			if ( datastreams === undefined ) {
 				return undefined;
 			}
 
-			for ( const datastream of datastreams ) {
-				if (
-					select( CORE_SITE ).isSiteURLMatch( datastream.defaultUri )
-				) {
-					return datastream;
-				}
-			}
+			const matchingDataStream =
+				select( MODULES_ANALYTICS_4 ).getMatchingWebDataStream(
+					datastreams
+				);
 
-			return null;
+			return matchingDataStream || null;
 		}
 	),
 
@@ -322,9 +370,269 @@ const baseSelectors = {
 	getWebDataStreamsBatch( state, propertyIDs ) {
 		return pick( state.webdatastreams, propertyIDs );
 	},
+
+	/**
+	 * Gets the matched measurement IDs for the given property IDs.
+	 *
+	 * @since 1.88.0
+	 * @since 1.90.0 Use propertyIDs instead of property objects for matching.
+	 *
+	 * @param {Object}         state       Data store's state.
+	 * @param {Array.<string>} propertyIDs GA4 property IDs array of strings.
+	 * @return {(Object|undefined)} Object with matched property ID as the key and measurement ID as the value, or an empty object if no matches are found; `undefined` if web data streams are not loaded.
+	 */
+	getMatchedMeasurementIDsByPropertyIDs: createRegistrySelector(
+		( select ) => ( _state, propertyIDs ) => {
+			invariant(
+				Array.isArray( propertyIDs ) && propertyIDs?.length,
+				'propertyIDs must be an array containing GA4 propertyIDs.'
+			);
+
+			propertyIDs.forEach( ( propertyID ) => {
+				invariant(
+					isValidPropertyID( propertyID ),
+					'A valid GA4 propertyID is required.'
+				);
+			} );
+
+			const datastreams =
+				select( MODULES_ANALYTICS_4 ).getWebDataStreamsBatch(
+					propertyIDs
+				);
+
+			if ( datastreams === undefined ) {
+				return undefined;
+			}
+
+			return propertyIDs.reduce( ( acc, currentPropertyID ) => {
+				if ( ! datastreams[ currentPropertyID ]?.length ) {
+					return acc;
+				}
+
+				const matchingDataStream = select(
+					MODULES_ANALYTICS_4
+				).getMatchingWebDataStream( datastreams[ currentPropertyID ] );
+
+				if ( ! matchingDataStream ) {
+					return acc;
+				}
+
+				const measurementID =
+					// eslint-disable-next-line sitekit/acronym-case
+					matchingDataStream.webStreamData.measurementId;
+
+				return {
+					...acc,
+					[ currentPropertyID ]: measurementID,
+				};
+			}, {} );
+		}
+	),
+
+	/**
+	 * Gets an Analytics config that matches one of provided measurement IDs.
+	 *
+	 * @since 1.94.0
+	 *
+	 * @param {Object}                state        Data store's state.
+	 * @param {string|Array.<string>} measurements Single GA4 measurement ID, or array of GA4 measurement ID strings.
+	 * @return {(Object|null|undefined)} An Analytics config that matches provided one of measurement IDs on success, NULL if no matching config is found, undefined if data hasn't been resolved yet.
+	 */
+	getAnalyticsConfigByMeasurementIDs: createRegistrySelector(
+		( select ) => ( state, measurements ) => {
+			const measurementIDs = Array.isArray( measurements )
+				? measurements
+				: [ measurements ];
+
+			let summaries = select( MODULES_ANALYTICS_4 ).getAccountSummaries();
+			if ( ! Array.isArray( summaries ) ) {
+				return undefined;
+			}
+
+			// Sort summaries to have the current account at the very beginning,
+			// so we can check it first because its more likely that the current
+			// account will contain a measurement ID that we are looking for.
+			const currentAccountID =
+				select( MODULES_ANALYTICS_4 ).getAccountID();
+			// Clone summaries to avoid mutating the original array.
+			summaries = [ ...summaries ].sort( ( { _id: accountID } ) =>
+				accountID === currentAccountID ? -1 : 0
+			);
+
+			const info = {};
+			const propertyIDs = [];
+
+			summaries.forEach(
+				( { _id: accountID, propertySummaries = [] } ) => {
+					propertySummaries.forEach( ( { _id: propertyID } ) => {
+						propertyIDs.push( propertyID );
+						info[ propertyID ] = {
+							accountID,
+							propertyID,
+						};
+					} );
+				}
+			);
+
+			if ( propertyIDs.length === 0 ) {
+				return null;
+			}
+
+			// eslint-disable-next-line @wordpress/no-unused-vars-before-return
+			const datastreams =
+				select( MODULES_ANALYTICS_4 ).getWebDataStreamsBatch(
+					propertyIDs
+				);
+
+			const resolvedDataStreams = select(
+				MODULES_ANALYTICS_4
+			).hasFinishedResolution( 'getWebDataStreamsBatch', [
+				propertyIDs,
+			] );
+
+			// Return undefined if web data streams haven't been resolved yet.
+			if ( ! resolvedDataStreams ) {
+				return undefined;
+			}
+
+			let firstlyFoundConfig;
+
+			for ( const propertyID in datastreams ) {
+				if ( ! datastreams[ propertyID ]?.length ) {
+					continue;
+				}
+
+				for ( const datastream of datastreams[ propertyID ] ) {
+					const { _id: webDataStreamID, webStreamData } = datastream;
+					const {
+						defaultUri: defaultURI,
+						measurementId: measurementID, // eslint-disable-line sitekit/acronym-case
+					} = webStreamData;
+
+					if ( ! measurementIDs.includes( measurementID ) ) {
+						continue;
+					}
+
+					const config = {
+						...info[ propertyID ],
+						webDataStreamID,
+						measurementID,
+					};
+
+					// Remember the firstly found config to return it at the end
+					// if we don't manage to find the most suitable config.
+					if ( ! firstlyFoundConfig ) {
+						firstlyFoundConfig = config;
+					}
+
+					// If only one measurement ID is provided, then we don't need
+					// to check whether its default URI matches the current
+					// reference URL. Otherwise, if we have many measurement IDs
+					// then we need to find the one that matches the current
+					// reference URL.
+					if (
+						measurementIDs.length === 1 ||
+						select( CORE_SITE ).isSiteURLMatch( defaultURI )
+					) {
+						return config;
+					}
+				}
+			}
+
+			return firstlyFoundConfig || null;
+		}
+	),
+
+	/**
+	 * Checks if web data streams are currently being loaded.
+	 *
+	 * This selector was introduced as a convenience for reusing the same loading logic across multiple
+	 * components, initially the `WebDataStreamSelect` and `SettingsEnhancedMeasurementSwitch` components.
+	 *
+	 * @since 1.111.0
+	 *
+	 * @param {Object}  state                Data store's state.
+	 * @param {Object}  args                 Arguments object.
+	 * @param {boolean} args.hasModuleAccess Whether the current user has access to the Analytics module(s).
+	 */
+	isLoadingWebDataStreams: createRegistrySelector(
+		( select ) =>
+			( state, { hasModuleAccess } ) => {
+				if (
+					! select( MODULES_ANALYTICS_4 ).hasFinishedResolution(
+						'getAccountSummaries'
+					)
+				) {
+					return true;
+				}
+
+				const propertyID =
+					select( MODULES_ANALYTICS_4 ).getPropertyID();
+				const loadedWebDataStreams =
+					isValidPropertyID( propertyID ) && hasModuleAccess !== false
+						? select( MODULES_ANALYTICS_4 ).hasFinishedResolution(
+								'getWebDataStreams',
+								[ propertyID ]
+						  )
+						: true;
+
+				if ( ! loadedWebDataStreams ) {
+					return true;
+				}
+
+				if (
+					select(
+						MODULES_ANALYTICS_4
+					).hasFinishedSelectingAccount() === false
+				) {
+					return true;
+				}
+
+				if (
+					select( MODULES_ANALYTICS_4 ).isMatchingAccountProperty()
+				) {
+					return true;
+				}
+
+				return select( MODULES_ANALYTICS_4 ).isResolving(
+					'getProperty',
+					[ propertyID ]
+				);
+			}
+	),
+
+	/**
+	 * Checks if a web data stream with the same name already exists.
+	 *
+	 * @since 1.124.0
+	 *
+	 * @param {Object} state             Data store's state.
+	 * @param {string} propertyID        GA4 property ID.
+	 * @param {string} webDataStreamName Web data stream name.
+	 * @return {(boolean|undefined)} TRUE if web data stream already exists, FALSE otherwise. Undefined if web data streams are not loaded yet.
+	 */
+	doesWebDataStreamExist: createRegistrySelector(
+		( select ) => ( _state, propertyID, webDataStreamName ) => {
+			invariant(
+				isValidPropertyID( propertyID ),
+				'A valid GA4 propertyID is required.'
+			);
+
+			const webDataStreams =
+				select( MODULES_ANALYTICS_4 ).getWebDataStreams( propertyID );
+
+			if ( webDataStreams === undefined ) {
+				return undefined;
+			}
+
+			return webDataStreams.some(
+				( { displayName } ) => displayName === webDataStreamName
+			);
+		}
+	),
 };
 
-const store = Data.combineStores(
+const store = combineStores(
 	fetchGetWebDataStreamsStore,
 	fetchGetWebDataStreamsBatchStore,
 	fetchCreateWebDataStreamStore,

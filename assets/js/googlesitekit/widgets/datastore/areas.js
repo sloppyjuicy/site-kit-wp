@@ -24,8 +24,10 @@ import invariant from 'invariant';
 /**
  * Internal dependencies
  */
-import { WIDGET_AREA_STYLES } from './constants';
+import { createRegistrySelector } from 'googlesitekit-data';
+import { CORE_WIDGETS, WIDGET_AREA_STYLES } from './constants';
 import { sortByProperty } from '../../../util/sort-by-property';
+import { createReducer } from '../../../../js/googlesitekit/data/create-reducer';
 
 const ASSIGN_WIDGET_AREA = 'ASSIGN_WIDGET_AREA';
 const REGISTER_WIDGET_AREA = 'REGISTER_WIDGET_AREA';
@@ -76,14 +78,21 @@ export const actions = {
 	 * Creates a widget area with a given name and settings.
 	 *
 	 * @since 1.9.0
+	 * @since 1.107.0 Extended to support an optional CTA component.
+	 * @since 1.110.0 Extended to support an optional filterActiveWidgets function.
+	 * @since 1.128.0 Extended to make title optional, support an optional Footer component, and added support for an optional `hasNewBadge` parameter.
 	 *
-	 * @param {string}      slug                Widget Area's slug.
-	 * @param {Object}      settings            Widget Area's settings.
-	 * @param {string}      settings.title      Title for this widget area.
-	 * @param {string}      [settings.subtitle] Optional. Subtitle for this widget area.
-	 * @param {WPComponent} [settings.Icon]     Optional. React component to render icon for this widget area.
-	 * @param {string}      [settings.style]    Optional. Widget area style (one of "boxes", "composite"). Default: "boxes".
-	 * @param {number}      [settings.priority] Optional. Priority for this widget area. Default: 10.
+	 * @param {string}      slug                           Widget Area's slug.
+	 * @param {Object}      settings                       Widget Area's settings.
+	 * @param {string}      [settings.title]               Optional. Title for this widget area.
+	 * @param {string}      [settings.subtitle]            Optional. Subtitle for this widget area.
+	 * @param {WPComponent} [settings.Icon]                Optional. React component to render icon for this widget area.
+	 * @param {string}      [settings.style]               Optional. Widget area style (one of "boxes", "composite"). Default: "boxes".
+	 * @param {number}      [settings.priority]            Optional. Priority for this widget area. Default: 10.
+	 * @param {boolean}     [settings.hasNewBadge]         Optional. Whether this widget area should display a new badge.
+	 * @param {WPComponent} [settings.CTA]                 Optional. React component used as CTA appearing beside the subtitle.
+	 * @param {WPComponent} [settings.Footer]              Optional. React component used as footer for the widget area.
+	 * @param {Function}    [settings.filterActiveWidgets] Optional. Function used to filter active widgets.
 	 * @return {Object} Redux-style action.
 	 */
 	registerWidgetArea(
@@ -94,10 +103,13 @@ export const actions = {
 			title,
 			subtitle,
 			Icon,
+			hasNewBadge = false,
+			CTA,
+			Footer,
+			filterActiveWidgets,
 		} = {}
 	) {
 		invariant( slug, 'slug is required.' );
-		invariant( title, 'settings.title is required.' );
 		invariant(
 			Object.values( WIDGET_AREA_STYLES ).includes( style ),
 			`settings.style must be one of: ${ WidgetAreaStyleKeys }.`
@@ -106,7 +118,17 @@ export const actions = {
 		return {
 			payload: {
 				slug,
-				settings: { priority, style, title, subtitle, Icon },
+				settings: {
+					priority,
+					style,
+					title,
+					subtitle,
+					Icon,
+					hasNewBadge,
+					CTA,
+					Footer,
+					filterActiveWidgets,
+				},
 			},
 			type: REGISTER_WIDGET_AREA,
 		};
@@ -115,26 +137,24 @@ export const actions = {
 
 export const controls = {};
 
-export const reducer = ( state, { type, payload } ) => {
+export const reducer = createReducer( ( state, { type, payload } ) => {
 	switch ( type ) {
 		case ASSIGN_WIDGET_AREA: {
 			const { slug, contextSlugs } = payload;
 
-			const { contextAssignments } = state;
 			contextSlugs.forEach( ( contextSlug ) => {
-				if ( contextAssignments[ contextSlug ] === undefined ) {
-					contextAssignments[ contextSlug ] = [];
+				if ( state.contextAssignments[ contextSlug ] === undefined ) {
+					state.contextAssignments[ contextSlug ] = [];
 				}
 
-				if ( ! contextAssignments[ contextSlug ].includes( slug ) ) {
-					contextAssignments[ contextSlug ].push( slug );
+				if (
+					! state.contextAssignments[ contextSlug ].includes( slug )
+				) {
+					state.contextAssignments[ contextSlug ].push( slug );
 				}
 			} );
 
-			return {
-				...state,
-				contextAssignments,
-			};
+			return state;
 		}
 
 		case REGISTER_WIDGET_AREA: {
@@ -148,24 +168,66 @@ export const reducer = ( state, { type, payload } ) => {
 				return state;
 			}
 
-			return {
-				...state,
-				areas: {
-					...state.areas,
-					[ slug ]: { ...settings, slug },
-				},
-			};
+			state.areas[ slug ] = { ...settings, slug };
+			return state;
 		}
 
 		default: {
 			return state;
 		}
 	}
-};
+} );
 
 export const resolvers = {};
 
 export const selectors = {
+	/**
+	 * Checks if a widget area is active.
+	 *
+	 * Returns `true` if the widget area is active.
+	 * Returns `false` if the widget area is NOT active.
+	 *
+	 * @since 1.47.0
+	 * @since 1.77.0 Add options.modules parameter.
+	 * @since 1.110.0 Introduced filterActiveWidgets support to allow custom filtering of active widgets.
+	 *
+	 * @param {Object}         state             Data store's state.
+	 * @param {string}         slug              Widget area's slug.
+	 * @param {Object}         [options]         Optional. Options parameter.
+	 * @param {Array.<string>} [options.modules] Optional. List of module slugs, when provided the widgets checked will be restricted to those associated with the specified modules.
+	 * @return {boolean} `true`/`false` based on whether widget area is active.
+	 */
+	isWidgetAreaActive: createRegistrySelector(
+		( select ) =>
+			( state, widgetAreaSlug, options = {} ) => {
+				invariant(
+					widgetAreaSlug,
+					'widgetAreaSlug is required to check a widget area is active.'
+				);
+
+				const { modules } = options;
+
+				const widgetArea =
+					select( CORE_WIDGETS ).getWidgetArea( widgetAreaSlug );
+
+				let areaWidgets = select( CORE_WIDGETS ).getWidgets(
+					widgetAreaSlug,
+					{ modules }
+				);
+
+				if ( widgetArea.filterActiveWidgets ) {
+					areaWidgets = widgetArea.filterActiveWidgets(
+						select,
+						areaWidgets
+					);
+				}
+
+				return areaWidgets.some( ( widget ) =>
+					select( CORE_WIDGETS ).isWidgetActive( widget.slug )
+				);
+			}
+	),
+
 	/**
 	 * Checks if a widget area has been registered.
 	 *

@@ -3,7 +3,11 @@
  */
 import intlLocalesSupported from 'intl-locales-supported';
 import intl from 'intl';
-import React from 'react';
+
+/**
+ * WordPress dependencies
+ */
+import React from '@wordpress/element';
 
 if ( global.Intl ) {
 	// Check for locales other than American English.
@@ -25,41 +29,21 @@ global._googlesitekitLegacyData = {
 		connectURL:
 			'http://example.com/wp-admin/index.php?action=googlesitekit_connect&nonce=abc123',
 	},
-	modules: {
-		'search-console': {
-			slug: 'search-console',
-			name: 'Search Console',
-		},
-		'pagespeed-insights': {
-			slug: 'pagespeed-insights',
-			name: 'PageSpeed Insights',
-		},
-		analytics: {
-			slug: 'analytics',
-			name: 'Analytics',
-		},
-		adsense: {
-			slug: 'adsense',
-			name: 'AdSense',
-		},
-		optimize: {
-			slug: 'optimize',
-			name: 'Optimize',
-		},
-		tagmanager: {
-			slug: 'tagmanager',
-			name: 'Tag Manager',
-		},
-	},
 	setup: {},
 };
 
 global._googlesitekitUserData = {
 	user: {},
+	connectURL:
+		'http://example.com/wp-admin/index.php?action=googlesitekit_connect&nonce=abc123',
 };
 
-global._googlesitekitBaseData = {};
+global._googlesitekitBaseData = {
+	storagePrefix: 'abc123',
+};
 global._googlesitekitEntityData = {};
+
+global.GOOGLESITEKIT_VERSION = '1.23.0';
 
 // eslint-disable-next-line no-undef
 global.gtag = function ( type, name, sendto, category, label, value ) {
@@ -83,3 +67,25 @@ global._googlesitekitAPIFetchData.nonceEndpoint =
 
 // Instantiate global to which we'll assign to the value imported from fetch-mock-jest during Jest's setupFilesAfterEnv execution.
 global.fetchMock = undefined;
+
+if ( global.document ) {
+	// Provide a stub for createRange (needed for rendering Joyride components)
+	global.document.createRange = () => ( {
+		setStart: () => {},
+		setEnd: () => {},
+		commonAncestorContainer: {
+			nodeName: 'BODY',
+			ownerDocument: document,
+		},
+	} );
+}
+
+// Added to provide support for testing `@material/web` components.
+global.PointerEvent = function () {};
+
+// Provide a stub for scrollTo, as it's not implemented by JSDOM. See https://github.com/jsdom/jsdom/pull/2626.
+global.scrollTo = () => {};
+
+// Provide the desktop viewport as default because SK is not mobile-first app. Global dimensions are used in the useWindowSize hook.
+global.innerWidth = 1024;
+global.innerHeight = 768;

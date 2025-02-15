@@ -65,7 +65,7 @@ class NoticeTest extends TestCase {
 			'test_hook_callback'  => array(
 				array(
 					'content'         => 'Test notice content.',
-					'active_callback' => function( $hook_suffix ) {
+					'active_callback' => function ( $hook_suffix ) {
 						return self::TEST_HOOK_SUFFIX === $hook_suffix;
 					},
 				),
@@ -74,7 +74,7 @@ class NoticeTest extends TestCase {
 			'other_hook_callback' => array(
 				array(
 					'content'         => 'Test notice content.',
-					'active_callback' => function( $hook_suffix ) {
+					'active_callback' => function ( $hook_suffix ) {
 						return 'other-hook-suffix' === $hook_suffix;
 					},
 				),
@@ -96,15 +96,15 @@ class NoticeTest extends TestCase {
 		$notice->render();
 		$output = ob_get_clean();
 
-		$this->assertContains( '<div id="googlesitekit-notice-test-slug" class="notice notice-success">', $output );
-		$this->assertContains( '<p>Successfully saved.</p>', $output );
+		$this->assertStringContainsString( '<div id="googlesitekit-notice-test-slug" class="notice notice-success">', $output );
+		$this->assertStringContainsString( '<p>Successfully saved.</p>', $output );
 	}
 
 	public function test_render_with_callable() {
 		$notice = new Notice(
 			'test-slug',
 			array(
-				'content'     => function() {
+				'content'     => function () {
 					return '<p>Successfully saved<script>document.write(" just now");</script>.</p>';
 				},
 				'type'        => Notice::TYPE_WARNING,
@@ -116,7 +116,7 @@ class NoticeTest extends TestCase {
 		$notice->render();
 		$output = ob_get_clean();
 
-		$this->assertContains( '<div id="googlesitekit-notice-test-slug" class="notice notice-warning is-dismissible">', $output );
-		$this->assertContains( '<p>Successfully saved<script>document.write(" just now");</script>.</p>', $output );
+		$this->assertStringContainsString( '<div id="googlesitekit-notice-test-slug" class="notice notice-warning is-dismissible">', $output );
+		$this->assertStringContainsString( '<p>Successfully saved<script>document.write(" just now");</script>.</p>', $output );
 	}
 }

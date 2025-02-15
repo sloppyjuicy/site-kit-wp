@@ -17,6 +17,11 @@
  */
 
 /**
+ * External dependencies
+ */
+import PropTypes from 'prop-types';
+
+/**
  * WordPress dependencies
  */
 import { useCallback } from '@wordpress/element';
@@ -25,32 +30,37 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import { MODULES_TAGMANAGER } from '../../datastore/constants';
+import { Option, Select } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import {
+	CONTAINER_CREATE,
+	MODULES_TAGMANAGER,
+} from '../../datastore/constants';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
 import ContainerSelect from './ContainerSelect';
-const { useSelect, useDispatch } = Data;
+import { trackEvent } from '../../../../util/tracking';
+import useViewContext from '../../../../hooks/useViewContext';
 
-export default function WebContainerSelect() {
+export default function WebContainerSelect( { hasModuleAccess } ) {
+	const viewContext = useViewContext();
+
 	const accountID = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getAccountID()
 	);
 	const containerID = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getContainerID()
 	);
-	const containers = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).getWebContainers( accountID )
-	);
-	const isPrimaryAMP = useSelect( ( select ) =>
-		select( CORE_SITE ).isPrimaryAMP()
-	);
-	const isSecondaryAMP = useSelect( ( select ) =>
-		select( CORE_SITE ).isSecondaryAMP()
-	);
+	const containers = useSelect( ( select ) => {
+		if ( hasModuleAccess === false ) {
+			return null;
+		}
 
-	const { setContainerID, setInternalContainerID } = useDispatch(
-		MODULES_TAGMANAGER
-	);
+		return select( MODULES_TAGMANAGER ).getWebContainers( accountID );
+	} );
+	const isAMP = useSelect( ( select ) => select( CORE_SITE ).isAMP() );
+
+	const { setContainerID, setInternalContainerID } =
+		useDispatch( MODULES_TAGMANAGER );
 	const onSelect = useCallback(
 		( index, item ) => {
 			const {
@@ -59,20 +69,37 @@ export default function WebContainerSelect() {
 				internalId: newInternalContainerID,
 			} = item.dataset;
 			if ( containerID !== newContainerID ) {
+				const eventAction =
+					newContainerID === CONTAINER_CREATE
+						? 'change_container_new'
+						: 'change_container';
+				trackEvent( `${ viewContext }_tagmanager`, eventAction );
+
 				setContainerID( newContainerID );
 				setInternalContainerID( newInternalContainerID || '' );
 			}
 		},
-		[ containerID, setContainerID, setInternalContainerID ]
+		[ containerID, setContainerID, setInternalContainerID, viewContext ]
 	);
 
-	if ( isPrimaryAMP ) {
-		return null;
-	}
-
-	const label = isSecondaryAMP
+	const label = isAMP
 		? __( 'Web Container', 'google-site-kit' )
 		: __( 'Container', 'google-site-kit' );
+
+	if ( hasModuleAccess === false ) {
+		return (
+			<Select
+				className="googlesitekit-tagmanager__select-container--web"
+				label={ label }
+				value={ containerID }
+				enhanced
+				outlined
+				disabled
+			>
+				<Option value={ containerID }>{ containerID }</Option>
+			</Select>
+		);
+	}
 
 	return (
 		<ContainerSelect
@@ -84,3 +111,7 @@ export default function WebContainerSelect() {
 		/>
 	);
 }
+
+WebContainerSelect.propTypes = {
+	hasModuleAccess: PropTypes.bool,
+};

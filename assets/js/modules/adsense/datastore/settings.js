@@ -24,7 +24,11 @@ import invariant from 'invariant';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import {
+	commonActions,
+	createRegistryControl,
+	combineStores,
+} from 'googlesitekit-data';
 import {
 	INVARIANT_DOING_SUBMIT_CHANGES,
 	INVARIANT_SETTINGS_NOT_CHANGED,
@@ -32,8 +36,6 @@ import {
 import { isValidAccountID, isValidClientID } from '../util';
 import { MODULES_ADSENSE } from './constants';
 import { createStrictSelect } from '../../../googlesitekit/data/utils';
-
-const { commonActions, createRegistryControl } = Data;
 
 // Invariant error messages.
 export const INVARIANT_MISSING_ACCOUNT_STATUS =
@@ -47,12 +49,12 @@ export const INVARIANT_INVALID_CLIENT_ID =
 const COMPLETE_ACCOUNT_SETUP = 'COMPLETE_ACCOUNT_SETUP';
 const COMPLETE_SITE_SETUP = 'COMPLETE_SITE_SETUP';
 
-// The original account status on pageload is a specific requirement for
+// The original use-snippet on pageload is a specific requirement for
 // certain parts of the AdSense setup flow.
-const RECEIVE_ORIGINAL_ACCOUNT_STATUS = 'RECEIVE_ORIGINAL_ACCOUNT_STATUS';
+const RECEIVE_ORIGINAL_USE_SNIPPET = 'RECEIVE_ORIGINAL_USE_SNIPPET';
 
 const baseInitialState = {
-	originalAccountStatus: undefined,
+	originalUseSnippet: undefined,
 };
 
 const baseActions = {
@@ -94,15 +96,12 @@ const baseActions = {
 		return success;
 	},
 
-	receiveOriginalAccountStatus( originalAccountStatus ) {
-		invariant(
-			originalAccountStatus,
-			'originalAccountStatus is required.'
-		);
+	receiveOriginalUseSnippet( originalUseSnippet ) {
+		invariant( originalUseSnippet, 'originalUseSnippet is required.' );
 
 		return {
-			payload: { originalAccountStatus },
-			type: RECEIVE_ORIGINAL_ACCOUNT_STATUS,
+			payload: { originalUseSnippet },
+			type: RECEIVE_ORIGINAL_USE_SNIPPET,
 		};
 	},
 };
@@ -170,31 +169,28 @@ const baseReducer = ( state, { type, payload } ) => {
 	switch ( type ) {
 		// This action is purely for testing, the value is typically handled
 		// as a side-effect from 'RECEIVE_SETTINGS' (see below).
-		case RECEIVE_ORIGINAL_ACCOUNT_STATUS: {
-			const { originalAccountStatus } = payload;
+		case RECEIVE_ORIGINAL_USE_SNIPPET: {
+			const { originalUseSnippet } = payload;
 			return {
 				...state,
-				originalAccountStatus,
+				originalUseSnippet,
 			};
 		}
 
 		// This action is mainly handled via createSettingsStore, but here we
-		// need it to have the side effect of storing the original account
-		// status.
+		// need it to have the side effect of storing the original useSnippet.
 		case 'RECEIVE_GET_SETTINGS': {
 			const { response } = payload;
-			const { accountStatus } = response;
+			const { useSnippet } = response;
 
-			// Only set original account status when it is really the first
+			// Only set original account status AND original useSnippet when it is really the first
 			// time that we load the settings on this pageload.
-			if ( undefined === state.originalAccountStatus ) {
-				return {
-					...state,
-					originalAccountStatus: accountStatus,
-				};
-			}
-
-			return state;
+			return {
+				...state,
+				...( undefined === state.originalUseSnippet && {
+					originalUseSnippet: useSnippet,
+				} ),
+			};
 		}
 
 		default: {
@@ -204,14 +200,14 @@ const baseReducer = ( state, { type, payload } ) => {
 };
 
 const baseResolvers = {
-	*getOriginalAccountStatus() {
+	*getOriginalUseSnippet() {
 		const registry = yield commonActions.getRegistry();
 
-		// Do not do anything if original account status already known.
-		const existingOriginalAccountStatus = registry
+		// Do not do anything if original useSnippet is already known.
+		const existingOriginalUseSnippet = registry
 			.select( MODULES_ADSENSE )
-			.getOriginalAccountStatus();
-		if ( undefined !== existingOriginalAccountStatus ) {
+			.getOriginalUseSnippet();
+		if ( undefined !== existingOriginalUseSnippet ) {
 			return;
 		}
 
@@ -238,17 +234,16 @@ const baseSelectors = {
 	},
 
 	/**
-	 * Gets the original account status stored before the current pageload.
+	 * Gets the original useSnippet stored before the current pageload.
 	 *
-	 * @since 1.9.0
+	 * @since 1.72.0
 	 * @private
 	 *
 	 * @param {Object} state Data store's state.
-	 * @return {(string|undefined)} Original account status (may be an empty string), or
-	 *                              undefined if not loaded yet.
+	 * @return {(boolean|undefined)} Original useSnippet, or undefined if not loaded yet.
 	 */
-	getOriginalAccountStatus( state ) {
-		return state.originalAccountStatus;
+	getOriginalUseSnippet( state ) {
+		return state.originalUseSnippet;
 	},
 };
 
@@ -280,7 +275,7 @@ export function validateCanSubmitChanges( select ) {
 	);
 }
 
-const store = Data.combineStores( {
+const store = combineStores( {
 	initialState: baseInitialState,
 	actions: baseActions,
 	controls: baseControls,

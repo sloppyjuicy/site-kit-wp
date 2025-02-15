@@ -24,10 +24,9 @@ import invariant from 'invariant';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import Data, { createRegistryControl } from 'googlesitekit-data';
 import { deleteItem, getItem, setItem } from '../api/cache';
-
-const { createRegistryControl } = Data;
+import { HOUR_IN_SECONDS } from '../../util';
 
 // Actions
 const CREATE_SNAPSHOT = 'CREATE_SNAPSHOT';
@@ -131,7 +130,10 @@ export const createSnapshotStore = ( storeName ) => {
 		} ),
 		[ RESTORE_SNAPSHOT ]: () => {
 			// Only get snapshots made within the last hour.
-			return getItem( `datastore::cache::${ storeName }`, 3600 );
+			return getItem(
+				`datastore::cache::${ storeName }`,
+				HOUR_IN_SECONDS
+			);
 		},
 	};
 

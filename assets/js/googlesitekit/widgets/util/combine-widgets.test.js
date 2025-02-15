@@ -23,9 +23,8 @@ import { combineWidgets } from './combine-widgets';
 import { getWidgetLayout } from './get-widget-layout';
 import { WIDGET_WIDTHS } from '../datastore/constants';
 import ReportZero from '../../../components/ReportZero';
-import ActivateModuleCTA from '../../../components/ActivateModuleCTA';
-import CompleteModuleActivationCTA from '../../../components/CompleteModuleActivationCTA';
 import Null from '../../../components/Null';
+import RecoverableModules from '../../../components/RecoverableModules';
 
 describe( 'combineWidgets', () => {
 	const getQuarterWidget = ( slug ) => ( {
@@ -40,13 +39,9 @@ describe( 'combineWidgets', () => {
 		Component: ReportZero,
 		metadata: { moduleSlug },
 	} );
-	const getActivateModuleCTAState = ( moduleSlug ) => ( {
-		Component: ActivateModuleCTA,
-		metadata: { moduleSlug },
-	} );
-	const getCompleteModuleActivationCTAState = ( moduleSlug ) => ( {
-		Component: CompleteModuleActivationCTA,
-		metadata: { moduleSlug },
+	const getRecoverableModulesState = ( moduleSlugs ) => ( {
+		Component: RecoverableModules,
+		metadata: { moduleSlugs },
 	} );
 	const getNullState = () => ( { Component: Null, metadata: {} } );
 
@@ -58,14 +53,14 @@ describe( 'combineWidgets', () => {
 			getFullWidget( 'test4' ),
 		];
 		const widgetStates = {
-			test1: getReportZeroState( 'analytics' ),
-			test2: getReportZeroState( 'analytics' ),
-			test3: getReportZeroState( 'analytics' ),
-			test4: getReportZeroState( 'analytics' ),
+			test1: getReportZeroState( 'analytics-4' ),
+			test2: getReportZeroState( 'analytics-4' ),
+			test3: getReportZeroState( 'analytics-4' ),
+			test4: getReportZeroState( 'analytics-4' ),
 		};
 
 		const expected = {
-			overrideComponents: [ getReportZeroState( 'analytics' ) ],
+			overrideComponents: [ getReportZeroState( 'analytics-4' ) ],
 			gridColumnWidths: [ 12, 0, 0, 0 ],
 		};
 
@@ -85,9 +80,9 @@ describe( 'combineWidgets', () => {
 		const widgetStates = {
 			// The following widgets should be combined as they are all from the same
 			// module and in the same state.
-			test1: getReportZeroState( 'analytics' ),
-			test2: getReportZeroState( 'analytics' ),
-			test3: getReportZeroState( 'analytics' ),
+			test1: getReportZeroState( 'analytics-4' ),
+			test2: getReportZeroState( 'analytics-4' ),
+			test3: getReportZeroState( 'analytics-4' ),
 			// This widget should not be combined even though it is in the same
 			// special state as the others.
 			test4: getReportZeroState( 'search-console' ),
@@ -97,7 +92,7 @@ describe( 'combineWidgets', () => {
 			overrideComponents: [
 				null,
 				null,
-				getReportZeroState( 'analytics' ),
+				getReportZeroState( 'analytics-4' ),
 				null,
 			],
 			gridColumnWidths: [ 0, 0, 9, 3 ],
@@ -122,8 +117,7 @@ describe( 'combineWidgets', () => {
 			// Every widget here is in a different state than the adjacent ones, so there is nothing to combine.
 			test1: getRegularState(),
 			test2: getReportZeroState( 'search-console' ),
-			test3: getReportZeroState( 'analytics' ),
-			test4: getActivateModuleCTAState( 'adsense' ),
+			test3: getReportZeroState( 'analytics-4' ),
 		};
 		const expected = {
 			gridColumnWidths: [ 3, 3, 3, 3 ],
@@ -148,8 +142,8 @@ describe( 'combineWidgets', () => {
 			// widgets in each group have matching state.
 			test1: getReportZeroState( 'search-console' ),
 			test2: getReportZeroState( 'search-console' ),
-			test3: getReportZeroState( 'analytics' ),
-			test4: getReportZeroState( 'analytics' ),
+			test3: getReportZeroState( 'analytics-4' ),
+			test4: getReportZeroState( 'analytics-4' ),
 		};
 		const expected = {
 			gridColumnWidths: [ 0, 6, 0, 6 ],
@@ -178,9 +172,9 @@ describe( 'combineWidgets', () => {
 			// Only test3 and test4 will be combined. While test2 is adjacent and has matching state, it is within
 			// the previous row, so should not be included in the combination.
 			test1: getReportZeroState( 'search-console' ),
-			test2: getActivateModuleCTAState( 'analytics' ),
-			test3: getActivateModuleCTAState( 'analytics' ),
-			test4: getActivateModuleCTAState( 'analytics' ),
+			test2: getRecoverableModulesState( [ 'analytics-4' ] ),
+			test3: getRecoverableModulesState( [ 'analytics-4' ] ),
+			test4: getRecoverableModulesState( [ 'analytics-4' ] ),
 		};
 		const expected = {
 			gridColumnWidths: [ 6, 6, 0, 12 ],
@@ -206,13 +200,13 @@ describe( 'combineWidgets', () => {
 		const widgetStates = {
 			// Only test1 and test2 will be combined. test3 has matching state but is within the following row,
 			// test4 and test6 are not adjacent so they won't be combined despite having the same state.
-			test1: getCompleteModuleActivationCTAState( 'search-console' ),
-			test2: getCompleteModuleActivationCTAState( 'search-console' ),
-			test3: getCompleteModuleActivationCTAState( 'search-console' ),
-			test4: getCompleteModuleActivationCTAState( 'analytics' ),
+			test1: getRecoverableModulesState( [ 'search-console' ] ),
+			test2: getRecoverableModulesState( [ 'search-console' ] ),
+			test3: getRecoverableModulesState( [ 'search-console' ] ),
+			test4: getRecoverableModulesState( [ 'analytics-4' ] ),
 			test5: getRegularState(),
-			test6: getCompleteModuleActivationCTAState( 'analytics' ),
-			test7: getNullState( 'analytics' ),
+			test6: getRecoverableModulesState( [ 'analytics-4' ] ),
+			test7: getNullState( 'analytics-4' ),
 		};
 		const expected = {
 			gridColumnWidths: [ 0, 12, 3, 3, 3, 3, 0 ],
@@ -231,5 +225,14 @@ describe( 'combineWidgets', () => {
 		expect( combineWidgets( widgets, widgetStates, layout ) ).toEqual(
 			expected
 		);
+	} );
+
+	it( 'works with no widgets', () => {
+		const widgets = [];
+		const widgetStates = [];
+		const layout = getWidgetLayout( widgets, widgetStates );
+		expect( () =>
+			combineWidgets( widgets, widgetStates, layout )
+		).not.toThrow();
 	} );
 } );

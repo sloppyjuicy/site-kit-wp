@@ -41,7 +41,6 @@ final class Standalone {
 	public function __construct( Context $context ) {
 
 		$this->context = $context;
-
 	}
 
 	/**
@@ -64,7 +63,7 @@ final class Standalone {
 		 */
 		add_filter(
 			'admin_body_class',
-			function( $admin_body_classes ) {
+			function ( $admin_body_classes ) {
 				return "{$admin_body_classes} googlesitekit-standalone";
 			}
 		);
@@ -76,7 +75,7 @@ final class Standalone {
 
 		add_action(
 			'admin_head',
-			function() {
+			function () {
 				$this->print_standalone_styles();
 			}
 		);
@@ -92,7 +91,7 @@ final class Standalone {
 	public function is_standalone() {
 		global $pagenow;
 
-		$page       = $this->context->input()->filter( INPUT_GET, 'page', FILTER_SANITIZE_STRING );
+		$page       = htmlspecialchars( $this->context->input()->filter( INPUT_GET, 'page' ) ?: '' );
 		$standalone = $this->context->input()->filter( INPUT_GET, 'googlesitekit-standalone', FILTER_VALIDATE_BOOLEAN );
 
 		return ( 'admin.php' === $pagenow && false !== strpos( $page, 'googlesitekit' ) && $standalone );

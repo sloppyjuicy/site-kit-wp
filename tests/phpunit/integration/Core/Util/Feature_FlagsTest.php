@@ -16,8 +16,8 @@ use ReflectionMethod;
 
 class Feature_FlagsTest extends TestCase {
 
-	public function tearDown() {
-		parent::tearDown();
+	public function tear_down() {
+		parent::tear_down();
 		static::reset_feature_flags();
 	}
 
@@ -54,7 +54,7 @@ class Feature_FlagsTest extends TestCase {
 
 		add_filter(
 			'googlesitekit_is_feature_enabled',
-			function( $enabled, $feature_name ) {
+			function ( $enabled, $feature_name ) {
 				return 'test_feature' === $feature_name;
 			},
 			10,
@@ -74,5 +74,4 @@ class Feature_FlagsTest extends TestCase {
 
 		$this->assertFalse( Feature_Flags::enabled( 'test_feature' ) );
 	}
-
 }

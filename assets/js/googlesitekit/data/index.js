@@ -20,6 +20,7 @@
  * WordPress dependencies
  */
 import {
+	controls,
 	createRegistry,
 	createRegistryControl,
 	createRegistrySelector,
@@ -34,14 +35,30 @@ import {
 /**
  * Internal dependencies
  */
+import { useInViewSelect } from '../../hooks/useInViewSelect';
 import {
 	combineStores,
 	commonActions,
 	commonControls,
 	commonStore,
 } from './utils';
+import { createReducer } from './create-reducer';
 
-const Data = createRegistry();
+/**
+ * The Site Kit data registry.
+ *
+ * This should not be imported directly outside of `googlesitekit-*` files
+ * that need access to the registry to register datastores/widgets/etc.
+ *
+ * Instead, use the exported functions (eg `useSelect`,
+ * `createRegistrySelector`, etc.) from the `googlesitekit-data` package to
+ * access parts of the registry.
+ *
+ * @since 1.3.0 Data registry introduced.
+ * @since 1.130.0 Deprecated for general use in favor of named exports from `googlesitekit-data` package.
+ * @deprecated
+ */
+const Data = createRegistry( {}, global.wp?.data );
 
 // Attach some of our utility functions to the registry so third-party
 // developers can use them.
@@ -49,6 +66,15 @@ Data.combineStores = combineStores;
 Data.commonActions = commonActions;
 Data.commonControls = commonControls;
 Data.commonStore = commonStore;
+Data.createReducer = createReducer;
+
+// Attach our custom, useInViewSelect hook to the registry so third-party
+// developers can use it.
+Data.useInViewSelect = useInViewSelect;
+
+// Attach some WordPress data functions to the registry so third-party
+// developers can use them without importing '@wordpress/data'.
+Data.controls = controls;
 Data.createRegistryControl = createRegistryControl;
 Data.createRegistrySelector = createRegistrySelector;
 Data.useSelect = useSelect;
@@ -57,5 +83,23 @@ Data.useRegistry = useRegistry;
 Data.withSelect = withSelect;
 Data.withDispatch = withDispatch;
 Data.RegistryProvider = RegistryProvider;
+
+export {
+	combineStores,
+	commonActions,
+	commonControls,
+	commonStore,
+	controls,
+	createReducer,
+	useInViewSelect,
+	createRegistryControl,
+	createRegistrySelector,
+	useSelect,
+	useDispatch,
+	useRegistry,
+	withSelect,
+	withDispatch,
+	RegistryProvider,
+};
 
 export default Data;

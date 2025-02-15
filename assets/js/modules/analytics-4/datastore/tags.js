@@ -19,7 +19,7 @@
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { commonActions, combineStores } from 'googlesitekit-data';
 import { createExistingTagStore } from '../../../googlesitekit/data/create-existing-tag-store';
 import { MODULES_ANALYTICS_4 } from './constants';
 import { getTagMatchers } from '../utils/tag-matchers';
@@ -31,7 +31,37 @@ const existingTagStore = createExistingTagStore( {
 	isValidTag: isValidMeasurementID,
 } );
 
-const store = Data.combineStores( existingTagStore );
+// Override the `getExistingTag()` resolver to provide the extended Google Tag behavior.
+existingTagStore.resolvers.getExistingTag = function* () {
+	const registry = yield commonActions.getRegistry();
+
+	let existingTag = registry.select( MODULES_ANALYTICS_4 ).getExistingTag();
+
+	if ( existingTag === undefined ) {
+		existingTag = yield existingTagStore.actions.fetchGetExistingTag();
+	}
+
+	// As it's not possible to directly look up a Google Tag container by one of its tag IDs, we look up the container by destination ID (the measurement ID).
+	// We then check if the tag ID is included in the container's tag IDs. If so, we have confirmed the existing tag is a Google Tag pointing to the given measurement ID.
+	// Otherwise, we ignore the existing tag (set it to null).
+	if ( existingTag !== null ) {
+		const container = yield commonActions.await(
+			registry
+				.resolveSelect( MODULES_ANALYTICS_4 )
+				.getGoogleTagContainer( existingTag )
+		);
+
+		if ( ! container?.tagIds.includes( existingTag ) ) {
+			existingTag = null;
+		}
+	}
+
+	registry
+		.dispatch( MODULES_ANALYTICS_4 )
+		.receiveGetExistingTag( existingTag );
+};
+
+const store = combineStores( existingTagStore );
 
 export const initialState = store.initialState;
 export const actions = store.actions;

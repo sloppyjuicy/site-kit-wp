@@ -25,20 +25,18 @@ import PropTypes from 'prop-types';
 /**
  * WordPress dependencies
  */
-import { __ } from '@wordpress/i18n';
+import { _x, __, sprintf } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import { Select, Option } from '../../../../material-components';
+import { Option, ProgressBar, Select } from 'googlesitekit-components';
+import { useSelect } from 'googlesitekit-data';
 import {
 	MODULES_TAGMANAGER,
 	CONTAINER_CREATE,
 } from '../../datastore/constants';
-import ProgressBar from '../../../../components/ProgressBar';
 import { isValidAccountID } from '../../util';
-const { useSelect } = Data;
 
 export default function ContainerSelect( {
 	containers,
@@ -48,9 +46,6 @@ export default function ContainerSelect( {
 } ) {
 	const accountID = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getAccountID()
-	);
-	const hasExistingTag = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).hasExistingTag()
 	);
 	const hasResolvedAccounts = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).hasFinishedResolution( 'getAccounts' )
@@ -71,7 +66,7 @@ export default function ContainerSelect( {
 				'googlesitekit-tagmanager__select-container',
 				className
 			) }
-			disabled={ hasExistingTag || ! isValidAccountID( accountID ) }
+			disabled={ ! isValidAccountID( accountID ) }
 			value={ value }
 			enhanced
 			outlined
@@ -83,17 +78,30 @@ export default function ContainerSelect( {
 					publicId: CONTAINER_CREATE,
 					name: __( 'Set up a new container', 'google-site-kit' ),
 				} )
-				.map( (
-					{ publicId, name, containerId } // eslint-disable-line sitekit/acronym-case
-				) => (
-					<Option
-						key={ publicId } // eslint-disable-line sitekit/acronym-case
-						value={ publicId } // eslint-disable-line sitekit/acronym-case
-						data-internal-id={ containerId } // eslint-disable-line sitekit/acronym-case
-					>
-						{ name }
-					</Option>
-				) ) }
+				.map(
+					(
+						{ publicId, name, containerId } // eslint-disable-line sitekit/acronym-case
+					) => (
+						<Option
+							key={ publicId } // eslint-disable-line sitekit/acronym-case
+							value={ publicId } // eslint-disable-line sitekit/acronym-case
+							data-internal-id={ containerId } // eslint-disable-line sitekit/acronym-case
+						>
+							{ publicId === CONTAINER_CREATE // eslint-disable-line sitekit/acronym-case
+								? name
+								: sprintf(
+										/* translators: 1: container name, 2: container ID */
+										_x(
+											'%1$s (%2$s)',
+											'Tag Manager container name and ID',
+											'google-site-kit'
+										),
+										name,
+										publicId // eslint-disable-line sitekit/acronym-case
+								  ) }
+						</Option>
+					)
+				) }
 		</Select>
 	);
 }

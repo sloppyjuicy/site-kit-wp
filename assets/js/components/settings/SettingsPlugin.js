@@ -25,12 +25,13 @@ import { useCallback } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Checkbox } from 'googlesitekit-components';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import { Cell, Grid, Row } from '../../material-components';
 import Layout from '../layout/Layout';
-import Checkbox from '../Checkbox';
-const { useDispatch, useSelect } = Data;
+import { trackEvent } from '../../util';
+import useViewContext from '../../hooks/useViewContext';
 
 export default function SettingsPlugin() {
 	const showAdminBar = useSelect( ( select ) =>
@@ -38,11 +39,18 @@ export default function SettingsPlugin() {
 	);
 
 	const { setShowAdminBar } = useDispatch( CORE_SITE );
+
+	const viewContext = useViewContext();
+
 	const onAdminBarToggle = useCallback(
 		( { target } ) => {
+			const action = target.checked
+				? 'enable_admin_bar_menu'
+				: 'disable_admin_bar_menu';
 			setShowAdminBar( !! target.checked );
+			trackEvent( viewContext, action );
 		},
-		[ setShowAdminBar ]
+		[ setShowAdminBar, viewContext ]
 	);
 
 	return (
@@ -51,6 +59,7 @@ export default function SettingsPlugin() {
 			title={ __( 'Plugin Settings', 'google-site-kit' ) }
 			header
 			fill
+			rounded
 		>
 			<div className="googlesitekit-settings-module googlesitekit-settings-module--active">
 				<Grid>
@@ -65,6 +74,7 @@ export default function SettingsPlugin() {
 										checked={ showAdminBar }
 										onChange={ onAdminBarToggle }
 										disabled={ showAdminBar === undefined }
+										loading={ showAdminBar === undefined }
 									>
 										<span>
 											{ __(

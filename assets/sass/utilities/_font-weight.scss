@@ -18,8 +18,10 @@
 
 .googlesitekit-plugin {
 
-	.googlesitekit-font-weight-bold {
-		font-weight: 700 !important;
+	.googlesitekit-font-weight-medium {
+		font-weight: $fw-medium;
 	}
-
+	.googlesitekit-font-weight-bold {
+		font-weight: $fw-bold !important;
+	}
 }

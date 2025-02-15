@@ -44,3 +44,31 @@ export const convertSecondsToArray = ( seconds ) => {
 		Math.floor( seconds * 1000 ) - Math.floor( seconds ) * 1000,
 	];
 };
+
+/**
+ * Converts Date time string into UNIX timestamp in milliseconds.
+ *
+ * For example, passing "2014-10-02T15:01:23Z" returns 1412262083000.
+ *
+ * @since 1.116.0
+ *
+ * @param {string} dateStringValue The date time string.
+ * @return {number} UNIX timestamp in milliseconds.
+ */
+export const convertDateStringToUNIXTimestamp = ( dateStringValue ) => {
+	const unixTimestamp =
+		dateStringValue && ! Number.isInteger( dateStringValue )
+			? // Valid use of `new Date()` with an argument, because this should only
+			  // be passed full time strings, not `YYYY-MM-DD` style dates.
+			  //
+			  // See: https://github.com/google/site-kit-wp/pull/9459#discussion_r1790660073
+			  // eslint-disable-next-line sitekit/no-direct-date
+			  new Date( dateStringValue ).getTime()
+			: dateStringValue;
+
+	if ( isNaN( unixTimestamp ) || ! unixTimestamp ) {
+		return 0;
+	}
+
+	return unixTimestamp;
+};

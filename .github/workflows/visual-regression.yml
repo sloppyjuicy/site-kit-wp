@@ -5,7 +5,8 @@ on:
     branches:
       - main
       - develop
-    # Only run if CSS/JS/MD-related files changed.
+      - 'feature/**'
+    # Only run if CSS/JS related files changed.
     paths:
       - '.github/workflows/visual-regression.yml'
       - 'assets/**'
@@ -19,41 +20,44 @@ on:
       - '.nvmrc'
       - '**/package.json'
       - 'package-lock.json'
+      - 'src/tests/backstop/config.js'
+      - 'src/tests/backstop/Dockerfile'
     types:
       - opened
       - reopened
       - synchronize
       - ready_for_review
 
+concurrency:
+  group: visual-regression-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   visual-regression:
     name: Run VR Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     if: github.event.pull_request.draft == false
     steps:
-      - uses: styfle/cancel-workflow-action@0.8.0
-      - uses: actions/checkout@v2
-      - name: Read .nvmrc
-        run: echo "##[set-output name=NVMRC;]$(cat .nvmrc)"
-        id: nvm
+      - uses: actions/checkout@v4
       - name: Setup Node.js (.nvmrc)
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: '${{ steps.nvm.outputs.NVMRC }}'
-      - name: Cache Node - npm
-        uses: actions/cache@v1
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-cache-
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      # nvm@7 is the minimum version required for npm workspace support.
+      # This is needed to prevent js lint failures due to module resolution to the workspace packages.
+      # This can be removed once our node base version comes with nvm@7 or greater.
+      - name: Install npm Globally
+        run: npm run install-global-npm
+
       - name: npm install
         run: npm ci
       - name: Run Backstopjs
         run: npm run test:visualtest
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: vrt-report

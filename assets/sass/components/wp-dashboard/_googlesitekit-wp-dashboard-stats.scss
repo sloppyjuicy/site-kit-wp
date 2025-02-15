@@ -28,7 +28,7 @@
 	}
 
 	> .googlesitekit-wp-dashboard-stats__data-table {
-		align-self: flex-end;
+		align-self: stretch;
 		width: 48%;
 
 		@media (min-width: $bp-tablet) {
@@ -40,29 +40,6 @@
 		}
 
 		@media (min-width: $bp-wpdb2) {
-			width: auto;
-		}
-	}
-
-	&--fourup > .googlesitekit-wp-dashboard-stats__data-table {
-
-		@media (min-width: $bp-tablet) {
-			width: auto;
-		}
-
-		@media (min-width: $bp-wpdb1) {
-			width: 48%;
-		}
-
-		@media (min-width: $bp-wpdb2) {
-			width: auto;
-		}
-
-		@media (min-width: $bp-wpdb3) {
-			width: 48%;
-		}
-
-		@media (min-width: $bp-wpdb4) {
 			width: auto;
 		}
 	}
@@ -82,24 +59,76 @@
 		@media (min-width: $bp-wpdb2) {
 			width: 50%;
 		}
+	}
 
-		// Two side by side CTA's
-		+ .googlesitekit-wp-dashboard-stats__cta {
+	> :where(.googlesitekit-wp-dashboard-stats__cta) + .googlesitekit-wp-dashboard-stats__cta {
 
-			@media (min-width: $bp-tablet) {
-				margin-left: 1px;
-				margin-right: -1px;
-			}
+		@media (min-width: $bp-tablet) {
+			margin-left: 1px;
+			margin-right: -1px;
+		}
 
-			@media (min-width: $bp-wpdb2) {
-				margin-left: 1px;
-				margin-right: -1px;
-			}
+		@media (min-width: $bp-wpdb2) {
+			margin-left: 1px;
+			margin-right: -1px;
 		}
 	}
 
 	// Regular CTA shows up when data is zero
-	.googlesitekit-cta + .googlesitekit-wp-dashboard-stats__cta {
+	:where(.googlesitekit-cta) + .googlesitekit-wp-dashboard-stats__cta {
 		width: 100%;
+	}
+
+	> .googlesitekit-data-block--is-gathering-data {
+		margin-bottom: $grid-gap-phone;
+	}
+}
+
+/* stylelint-disable-next-line selector-id-pattern */
+#google_dashboard_widget .googlesitekit-wp-dashboard-stats--fourup > .googlesitekit-wp-dashboard-stats__data-table {
+
+	@media (min-width: $bp-tablet) {
+		width: auto;
+	}
+
+	@media (min-width: $bp-wpdb1) {
+		width: 48%;
+	}
+
+	@media (min-width: $bp-wpdb2) {
+		width: auto;
+	}
+
+	@media (min-width: $bp-wpdb3) {
+		width: 48%;
+	}
+
+	@media (min-width: $bp-wpdb4) {
+		width: auto;
+	}
+}
+
+/* stylelint-disable-next-line selector-id-pattern */
+#google_dashboard_widget .googlesitekit-wp-dashboard-stats--twoup > {
+
+	.googlesitekit-wp-dashboard-stats__data-table {
+		width: 48%;
+	}
+
+	.googlesitekit-wp-dashboard-stats__cta {
+		width: 100%;
+
+		.mdc-button {
+			text-decoration: none;
+		}
+
+		.googlesitekit-analytics-cta {
+
+			@media (min-width: $bp-xxlarge) {
+				--cta-analytics-gap: #{$grid-gap-phone};
+
+				flex-direction: column;
+			}
+		}
 	}
 }

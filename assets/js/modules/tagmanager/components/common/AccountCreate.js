@@ -25,16 +25,17 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import StoreErrorNotices from '../../../../components/StoreErrorNotices';
-import Link from '../../../../components/Link';
-import Button from '../../../../components/Button';
-import ProgressBar from '../../../../components/ProgressBar';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Button, ProgressBar } from 'googlesitekit-components';
 import { MODULES_TAGMANAGER } from '../../datastore/constants';
 import { CORE_USER } from '../../../../googlesitekit/datastore/user/constants';
-const { useSelect, useDispatch } = Data;
+import StoreErrorNotices from '../../../../components/StoreErrorNotices';
+import { trackEvent } from '../../../../util/tracking';
+import useViewContext from '../../../../hooks/useViewContext';
 
 export default function AccountCreate() {
+	const viewContext = useViewContext();
+
 	const hasResolvedAccounts = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).hasFinishedResolution( 'getAccounts' )
 	);
@@ -53,9 +54,11 @@ export default function AccountCreate() {
 	}, [ resetAccounts ] );
 
 	const createAccountHandler = useCallback( () => {
+		trackEvent( `${ viewContext }_tagmanager`, 'create_account' );
+
 		// Need to use window.open for this to allow for stubbing in E2E.
 		global.window.open( createAccountURL, '_blank' );
-	}, [ createAccountURL ] );
+	}, [ createAccountURL, viewContext ] );
 
 	if ( ! hasResolvedAccounts || ! hasResolvedGetUser ) {
 		return <ProgressBar />;
@@ -87,9 +90,9 @@ export default function AccountCreate() {
 				</Button>
 
 				<div className="googlesitekit-setup-module__sub-action">
-					<Link onClick={ refetchAccountsHandler }>
+					<Button tertiary onClick={ refetchAccountsHandler }>
 						{ __( 'Re-fetch My Account', 'google-site-kit' ) }
-					</Link>
+					</Button>
 				</div>
 			</div>
 		</div>

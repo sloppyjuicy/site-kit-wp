@@ -20,9 +20,8 @@ import {
 } from '../../utils';
 
 function handleRequest( request ) {
-	if (
-		request.url().startsWith( 'https://accounts.google.com/o/oauth2/auth' )
-	) {
+	const url = request.url();
+	if ( url.startsWith( 'https://accounts.google.com/o/oauth2/v2/auth' ) ) {
 		request.respond( {
 			status: 302,
 			headers: {
@@ -32,23 +31,13 @@ function handleRequest( request ) {
 				),
 			},
 		} );
-	} else if ( request.url().match( 'google-site-kit/v1/data/' ) ) {
-		request.respond( { status: 200 } );
-	} else if (
-		request
-			.url()
-			.match(
-				'google-site-kit/v1/modules/search-console/data/searchanalytics'
-			)
-	) {
-		request.respond( { status: 200, body: JSON.stringify( {} ) } );
-	} else if (
-		request
-			.url()
-			.match(
-				'google-site-kit/v1/modules/search-console/data/matched-sites'
-			)
-	) {
+	} else if ( url.match( 'search-console/data/searchanalytics' ) ) {
+		request.respond( { status: 200, body: '[]' } );
+	} else if ( url.match( 'pagespeed-insights/data/pagespeed' ) ) {
+		request.respond( { status: 200, body: '{}' } );
+	} else if ( url.match( 'user/data/survey-timeouts' ) ) {
+		request.respond( { status: 200, body: '[]' } );
+	} else if ( url.match( 'search-console/data/matched-sites' ) ) {
 		request.respond( {
 			status: 200,
 			contentType: 'application/json',
@@ -100,7 +89,11 @@ describe( 'Site Kit set up flow for the first time', () => {
 		} );
 		await page.waitForNavigation();
 
-		await expect( page ).toMatchElement( '#js-googlesitekit-dashboard' );
+		await page.waitForSelector( '#js-googlesitekit-main-dashboard' );
+
+		await expect( page ).toMatchElement(
+			'#js-googlesitekit-main-dashboard'
+		);
 		await expect( page ).toMatchElement(
 			'.googlesitekit-publisher-win__title',
 			{
@@ -117,9 +110,7 @@ describe( 'Site Kit set up flow for the first time', () => {
 		await disconnectFromSiteKit();
 
 		// Ensure the user is on step one of the setup wizard.
-		await expect(
-			page
-		).toMatchElement(
+		await expect( page ).toMatchElement(
 			'.googlesitekit-wizard-progress-step__number-text--inprogress',
 			{ text: '1' }
 		);

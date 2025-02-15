@@ -20,40 +20,159 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import classnames from 'classnames';
 
 /**
  * WordPress dependencies
  */
 import { __ } from '@wordpress/i18n';
-import { Fragment, useEffect, useRef } from '@wordpress/element';
+import {
+	Fragment,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { Button, SpinnerButton } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
-import { Cell, Row } from '../../material-components';
-import { getUserInputAnwsers } from './util/constants';
-import Button from '../Button';
+import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import { CORE_UI } from '../../googlesitekit/datastore/ui/constants';
+import {
+	getUserInputAnswers,
+	USER_INPUT_QUESTIONS_GOALS,
+	USER_INPUT_QUESTIONS_PURPOSE,
+	USER_INPUT_QUESTION_POST_FREQUENCY,
+	USER_INPUT_CURRENTLY_EDITING_KEY,
+	USER_INPUT_QUESTIONS_LIST,
+	FORM_USER_INPUT_QUESTION_SNAPSHOT,
+} from './util/constants';
 import UserInputPreviewGroup from './UserInputPreviewGroup';
 import UserInputQuestionNotice from './UserInputQuestionNotice';
 import useQueryArg from '../../hooks/useQueryArg';
 import ErrorNotice from '../ErrorNotice';
-const { useSelect } = Data;
+import LoadingWrapper from '../LoadingWrapper';
+import CancelUserInputButton from './CancelUserInputButton';
+import { hasErrorForAnswer } from './util/validation';
+import Portal from '../Portal';
+import ConfirmSitePurposeChangeModal from '../KeyMetrics/ConfirmSitePurposeChangeModal';
+import { CORE_FORMS } from '../../googlesitekit/datastore/forms/constants';
+import { MODULES_ANALYTICS_4 } from '../../modules/analytics-4/datastore/constants';
+import KeyMetricsSettingsSellProductsSubtleNotification from './KeyMetricsSettingsSellProductsSubtleNotification';
 
 export default function UserInputPreview( props ) {
-	const { noFooter, goTo, submitChanges, error } = props;
-	const previewContainer = useRef();
-	const settings = useSelect( ( select ) =>
-		select( CORE_USER ).getUserInputSettings()
-	);
 	const {
-		USER_INPUT_ANSWERS_GOALS,
-		USER_INPUT_ANSWERS_HELP_NEEDED,
+		goBack,
+		submitChanges,
+		error,
+		loading = false,
+		settingsView = false,
+	} = props;
+	const previewContainer = useRef();
+	const [ isModalOpen, toggleIsModalOpen ] = useState( false );
+	const handleModal = useCallback( () => {
+		toggleIsModalOpen( false );
+	}, [ toggleIsModalOpen ] );
+	const settings = useSelect( ( select ) =>
+		select( CORE_USER ).getSavedUserInputSettings()
+	);
+	const isSavingSettings = useSelect( ( select ) =>
+		select( CORE_USER ).isSavingUserInputSettings( settings )
+	);
+	const isNavigating = useSelect( ( select ) =>
+		select( CORE_LOCATION ).isNavigating()
+	);
+	const isEditing = useSelect(
+		( select ) =>
+			!! select( CORE_UI ).getValue( USER_INPUT_CURRENTLY_EDITING_KEY )
+	);
+	const isScreenLoading = isSavingSettings || isNavigating;
+
+	const {
+		USER_INPUT_ANSWERS_PURPOSE,
 		USER_INPUT_ANSWERS_POST_FREQUENCY,
-		USER_INPUT_ANSWERS_ROLE,
-	} = getUserInputAnwsers();
+		USER_INPUT_ANSWERS_GOALS,
+	} = getUserInputAnswers();
+
 	const [ page ] = useQueryArg( 'page' );
+
+	const hasError = USER_INPUT_QUESTIONS_LIST.some( ( slug ) =>
+		hasErrorForAnswer( settings?.[ slug ]?.values || [] )
+	);
+
+	const onSaveClick = useCallback( () => {
+		if ( hasError || isScreenLoading ) {
+			return;
+		}
+
+		submitChanges();
+	}, [ hasError, isScreenLoading, submitChanges ] );
+
+	const { saveUserInputSettings } = useDispatch( CORE_USER );
+
+	const savedPurposeSnapshot = useSelect( ( select ) =>
+		select( CORE_FORMS ).getValue(
+			FORM_USER_INPUT_QUESTION_SNAPSHOT,
+			USER_INPUT_QUESTIONS_PURPOSE
+		)
+	);
+
+	const savedPurpose = useSelect( ( select ) =>
+		select( CORE_USER ).getSavedUserInputSettings()
+	);
+
+	const currentMetrics = useSelect( ( select ) => {
+		if (
+			savedPurpose === undefined ||
+			! savedPurpose?.purpose?.values?.length
+		) {
+			return [];
+		}
+
+		return select( CORE_USER ).getAnswerBasedMetrics(
+			savedPurpose?.purpose?.values?.[ 0 ]
+		);
+	} );
+
+	const includeConversionTailoredMetrics = useSelect( ( select ) =>
+		select( MODULES_ANALYTICS_4 ).shouldIncludeConversionTailoredMetrics()
+	);
+	const newMetrics = useSelect( ( select ) =>
+		select( CORE_USER ).getAnswerBasedMetrics(
+			null,
+			includeConversionTailoredMetrics
+		)
+	);
+
+	const { resetUserInputSettings } = useDispatch( CORE_USER );
+	const { setValues } = useDispatch( CORE_FORMS );
+	const { setValues: setUIValues } = useDispatch( CORE_UI );
+
+	const openModalIfMetricsChanged = async () => {
+		const differenceInMetrics = newMetrics.filter(
+			( x ) => ! currentMetrics.includes( x )
+		);
+
+		if ( 0 !== differenceInMetrics.length ) {
+			toggleIsModalOpen( true );
+		} else {
+			await saveUserInputSettings();
+
+			if ( savedPurposeSnapshot?.length ) {
+				await resetUserInputSettings();
+				setValues( FORM_USER_INPUT_QUESTION_SNAPSHOT, {
+					[ USER_INPUT_QUESTIONS_PURPOSE ]: undefined,
+				} );
+			}
+			setUIValues( {
+				[ USER_INPUT_CURRENTLY_EDITING_KEY ]: undefined,
+			} );
+		}
+	};
 
 	useEffect( () => {
 		if (
@@ -63,9 +182,8 @@ export default function UserInputPreview( props ) {
 			return;
 		}
 
-		const buttonEl = previewContainer.current.querySelector(
-			'.mdc-button'
-		);
+		const buttonEl =
+			previewContainer.current.querySelector( '.mdc-button' );
 		if ( buttonEl ) {
 			setTimeout( () => {
 				buttonEl.focus();
@@ -73,108 +191,150 @@ export default function UserInputPreview( props ) {
 		}
 	}, [ page ] );
 
+	const { setUserInputSetting } = useDispatch( CORE_USER );
+	const currentlyEditingSlug = useSelect( ( select ) =>
+		select( CORE_UI ).getValue( USER_INPUT_CURRENTLY_EDITING_KEY )
+	);
+
+	useEffect( () => {
+		const purposeValues = [ ...( settings?.purpose?.values || [] ) ];
+		if (
+			USER_INPUT_QUESTIONS_PURPOSE === currentlyEditingSlug &&
+			purposeValues.includes( 'sell_products_or_service' )
+		) {
+			setUserInputSetting( USER_INPUT_QUESTIONS_PURPOSE, [
+				'sell_products',
+			] );
+			setValues( FORM_USER_INPUT_QUESTION_SNAPSHOT, {
+				[ USER_INPUT_QUESTIONS_PURPOSE ]: [
+					'sell_products_or_service',
+				],
+			} );
+		}
+	}, [ settings, setUserInputSetting, currentlyEditingSlug, setValues ] );
+
 	return (
 		<div
-			className="googlesitekit-user-input__preview"
+			className={ classnames( 'googlesitekit-user-input__preview', {
+				'googlesitekit-user-input__preview--editing': isEditing,
+			} ) }
 			ref={ previewContainer }
 		>
-			<Row>
-				<Cell lgSize={ 12 } mdSize={ 8 } smSize={ 4 }>
-					<Fragment>
-						<Row>
-							<Cell lgSize={ 6 } mdSize={ 8 } smSize={ 4 }>
-								<UserInputPreviewGroup
-									questionNumber={ 1 }
-									title={ __(
-										'Which best describes your team/role relation to this site?',
-										'google-site-kit'
-									) }
-									edit={ goTo.bind( null, 1, 'user-input' ) }
-									values={ settings?.role?.values || [] }
-									options={ USER_INPUT_ANSWERS_ROLE }
-								/>
+			<div className="googlesitekit-user-input__preview-contents">
+				{ ! settingsView && (
+					<p className="googlesitekit-user-input__preview-subheader">
+						{ __( 'Review your answers', 'google-site-kit' ) }
+					</p>
+				) }
+				{ settingsView && (
+					<div className="googlesitekit-settings-user-input__heading-container">
+						<LoadingWrapper
+							loading={ loading }
+							width="275px"
+							height="16px"
+						>
+							<p className="googlesitekit-settings-user-input__heading">
+								{ __(
+									'Edit your answers for more personalized metrics:',
+									'google-site-kit'
+								) }
+							</p>
+						</LoadingWrapper>
+					</div>
+				) }
+				<UserInputPreviewGroup
+					slug={ USER_INPUT_QUESTIONS_PURPOSE }
+					title={ __(
+						'What is the main purpose of this site?',
+						'google-site-kit'
+					) }
+					subtitle={
+						settings?.purpose?.values.includes(
+							'sell_products_or_service'
+						)
+							? KeyMetricsSettingsSellProductsSubtleNotification
+							: null
+					}
+					values={ settings?.purpose?.values || [] }
+					options={ USER_INPUT_ANSWERS_PURPOSE }
+					loading={ loading }
+					settingsView={ settingsView }
+					onChange={ openModalIfMetricsChanged }
+				/>
 
-								<UserInputPreviewGroup
-									questionNumber={ 2 }
-									title={ __(
-										'How often do you create new posts for this site?',
-										'google-site-kit'
-									) }
-									edit={ goTo.bind( null, 2, 'user-input' ) }
-									values={
-										settings?.postFrequency?.values || []
-									}
-									options={
-										USER_INPUT_ANSWERS_POST_FREQUENCY
-									}
-								/>
+				<UserInputPreviewGroup
+					slug={ USER_INPUT_QUESTION_POST_FREQUENCY }
+					title={ __(
+						'How often do you create new content for this site?',
+						'google-site-kit'
+					) }
+					values={ settings?.postFrequency?.values || [] }
+					options={ USER_INPUT_ANSWERS_POST_FREQUENCY }
+					loading={ loading }
+					settingsView={ settingsView }
+				/>
 
-								<UserInputPreviewGroup
-									questionNumber={ 3 }
-									title={ __(
-										'What are the goals of this site?',
-										'google-site-kit'
-									) }
-									edit={ goTo.bind( null, 3, 'user-input' ) }
-									values={ settings?.goals?.values || [] }
-									options={ USER_INPUT_ANSWERS_GOALS }
-								/>
-							</Cell>
-							<Cell lgSize={ 6 } mdSize={ 8 } smSize={ 4 }>
-								<UserInputPreviewGroup
-									questionNumber={ 4 }
-									title={ __(
-										'What do you need help most with for this site?',
-										'google-site-kit'
-									) }
-									edit={ goTo.bind( null, 4, 'user-input' ) }
-									values={
-										settings?.helpNeeded?.values || []
-									}
-									options={ USER_INPUT_ANSWERS_HELP_NEEDED }
-								/>
+				<UserInputPreviewGroup
+					slug={ USER_INPUT_QUESTIONS_GOALS }
+					title={ __(
+						'What are your top goals for this site?',
+						'google-site-kit'
+					) }
+					values={ settings?.goals?.values || [] }
+					options={ USER_INPUT_ANSWERS_GOALS }
+					loading={ loading }
+					settingsView={ settingsView }
+				/>
 
-								<UserInputPreviewGroup
-									questionNumber={ 5 }
-									title={ __(
-										'To help us identify opportunities for your site, enter the top three search terms that you’d like to show up for:',
-										'google-site-kit'
-									) }
-									edit={ goTo.bind( null, 5, 'user-input' ) }
-									values={
-										settings?.searchTerms?.values || []
-									}
-								/>
-							</Cell>
-						</Row>
+				{ error && <ErrorNotice error={ error } /> }
+			</div>
 
-						{ error && <ErrorNotice error={ error } /> }
-
-						{ ! noFooter && (
-							<div className="googlesitekit-user-input__preview--footer">
-								<UserInputQuestionNotice />
-
-								<div className="googlesitekit-user-input__buttons">
-									<Button
-										className="googlesitekit-user-input__buttons--next"
-										onClick={ submitChanges }
-									>
-										{ __( 'Submit', 'google-site-kit' ) }
-									</Button>
-								</div>
-							</div>
-						) }
-					</Fragment>
-				</Cell>
-			</Row>
+			{ ! settingsView && (
+				<Fragment>
+					<div className="googlesitekit-user-input__preview-notice">
+						<UserInputQuestionNotice />
+					</div>
+					<div className="googlesitekit-user-input__footer googlesitekit-user-input__buttons">
+						<div className="googlesitekit-user-input__footer-nav">
+							<SpinnerButton
+								className="googlesitekit-user-input__buttons--next"
+								onClick={ onSaveClick }
+								disabled={ hasError || isScreenLoading }
+								isSaving={ isScreenLoading }
+							>
+								{ __( 'Save', 'google-site-kit' ) }
+							</SpinnerButton>
+							<Button
+								tertiary
+								className="googlesitekit-user-input__buttons--back"
+								onClick={ goBack }
+								disabled={ isScreenLoading }
+							>
+								{ __( 'Back', 'google-site-kit' ) }
+							</Button>
+						</div>
+						<div className="googlesitekit-user-input__footer-cancel">
+							<CancelUserInputButton
+								disabled={ isScreenLoading }
+							/>
+						</div>
+					</div>
+				</Fragment>
+			) }
+			<Portal>
+				<ConfirmSitePurposeChangeModal
+					dialogActive={ isModalOpen }
+					handleDialog={ handleModal }
+				/>
+			</Portal>
 		</div>
 	);
 }
 
 UserInputPreview.propTypes = {
 	submitChanges: PropTypes.func,
-	noFooter: PropTypes.bool,
-	goTo: PropTypes.func.isRequired,
-	redirectURL: PropTypes.string,
-	errors: PropTypes.object,
+	goBack: PropTypes.func,
+	error: PropTypes.object,
+	loading: PropTypes.bool,
+	settingsView: PropTypes.bool,
 };

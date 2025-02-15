@@ -17,7 +17,7 @@
  */
 
 export { activateAMPWithMode, setAMPMode } from './activate-amp-and-set-mode';
-export { activatePlugins } from './activate-plugins';
+export { activatePlugins, deactivatePlugins } from './activate-plugins';
 export { clearSessionStorage } from './clear-session-storage';
 export { createWaitForFetchRequests } from './create-wait-for-fetch-requests';
 export { deactivateUtilityPlugins } from './deactivate-utility-plugins';
@@ -36,12 +36,15 @@ export { setEditPostFeature } from './set-edit-post-feature';
 export { setSearchConsoleProperty } from './set-search-console-property';
 export { setSiteVerification } from './set-site-verification';
 export { setupAdSense } from './setup-adsense';
-export { setupAnalytics } from './setup-analytics';
+export { setupAnalytics4 } from './setup-analytics';
 export { setupSiteKit } from './setup-site-kit';
+export { setupAds } from './setup-ads';
 export { switchDateRange } from './switch-date-range';
 export { testClientConfig } from './test-client-config';
 export { testSiteNotification } from './test-site-notification';
 export { useRequestInterception } from './use-request-interception';
+export { useSharedRequestInterception } from './use-request-interception';
 export { wpApiFetch } from './wp-api-fetch';
+export * from './console';
 export * from './features';
 export * from './step-and-screenshot';

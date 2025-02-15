@@ -24,29 +24,32 @@ import { __, _x } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useInViewSelect } from 'googlesitekit-data';
 import {
 	DATE_RANGE_OFFSET,
 	MODULES_SEARCH_CONSOLE,
 } from '../../datastore/constants';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
 import { CORE_USER } from '../../../../googlesitekit/datastore/user/constants';
-import whenActive from '../../../../util/when-active';
 import PreviewTable from '../../../../components/PreviewTable';
 import SourceLink from '../../../../components/SourceLink';
-import { isZeroReport } from '../../util';
+import { generateDateRangeArgs } from '../../util';
 import TableOverflowContainer from '../../../../components/TableOverflowContainer';
-import { generateDateRangeArgs } from '../../util/report-date-range-args';
 import ReportTable from '../../../../components/ReportTable';
 import Link from '../../../../components/Link';
 import { numFmt } from '../../../../util';
-const { useSelect } = Data;
+import { ZeroDataMessage } from '../common';
+import useViewOnly from '../../../../hooks/useViewOnly';
 
-function DashboardPopularKeywordsWidget( {
-	Widget,
-	WidgetReportZero,
-	WidgetReportError,
-} ) {
+export default function DashboardPopularKeywordsWidget( props ) {
+	const { Widget, WidgetReportError } = props;
+
+	const viewOnlyDashboard = useViewOnly();
+
+	const isGatheringData = useInViewSelect( ( select ) =>
+		select( MODULES_SEARCH_CONSOLE ).isGatheringData()
+	);
+
 	const dateRangeDates = useSelect( ( select ) =>
 		select( CORE_USER ).getDateRangeDates( {
 			offsetDays: DATE_RANGE_OFFSET,
@@ -66,8 +69,9 @@ function DashboardPopularKeywordsWidget( {
 		reportArgs.url = url;
 	}
 
-	const data = useSelect( ( select ) =>
-		select( MODULES_SEARCH_CONSOLE ).getReport( reportArgs )
+	const data = useInViewSelect(
+		( select ) => select( MODULES_SEARCH_CONSOLE ).getReport( reportArgs ),
+		[ reportArgs ]
 	);
 	const error = useSelect( ( select ) =>
 		select( MODULES_SEARCH_CONSOLE ).getErrorForSelector( 'getReport', [
@@ -76,31 +80,34 @@ function DashboardPopularKeywordsWidget( {
 	);
 	const loading = useSelect(
 		( select ) =>
-			! select(
-				MODULES_SEARCH_CONSOLE
-			).hasFinishedResolution( 'getReport', [ reportArgs ] )
+			! select( MODULES_SEARCH_CONSOLE ).hasFinishedResolution(
+				'getReport',
+				[ reportArgs ]
+			)
 	);
-	const baseServiceURL = useSelect( ( select ) =>
-		select( MODULES_SEARCH_CONSOLE ).getServiceReportURL( {
+	const baseServiceURL = useSelect( ( select ) => {
+		if ( viewOnlyDashboard ) {
+			return null;
+		}
+
+		return select( MODULES_SEARCH_CONSOLE ).getServiceReportURL( {
 			...generateDateRangeArgs( dateRangeDates ),
 			page: url ? `!${ url }` : undefined,
-		} )
-	);
+		} );
+	} );
 
-	const Footer = () => (
-		<SourceLink
-			className="googlesitekit-data-block__source"
-			name={ _x( 'Search Console', 'Service name', 'google-site-kit' ) }
-			href={ baseServiceURL }
-			external
-		/>
-	);
-
-	if ( loading ) {
+	function Footer() {
 		return (
-			<Widget noPadding Footer={ Footer }>
-				<PreviewTable padding />
-			</Widget>
+			<SourceLink
+				className="googlesitekit-data-block__source"
+				name={ _x(
+					'Search Console',
+					'Service name',
+					'google-site-kit'
+				) }
+				href={ baseServiceURL }
+				external
+			/>
 		);
 	}
 
@@ -115,10 +122,10 @@ function DashboardPopularKeywordsWidget( {
 		);
 	}
 
-	if ( isZeroReport( data ) ) {
+	if ( loading || isGatheringData === undefined ) {
 		return (
-			<Widget Footer={ Footer }>
-				<WidgetReportZero moduleSlug="search-console" />
+			<Widget noPadding Footer={ Footer }>
+				<PreviewTable padding />
 			</Widget>
 		);
 	}
@@ -134,8 +141,11 @@ function DashboardPopularKeywordsWidget( {
 			),
 			primary: true,
 			field: 'keys.0',
-			Component: ( { fieldValue } ) => {
+			Component( { fieldValue } ) {
 				const searchAnalyticsURL = useSelect( ( select ) => {
+					if ( viewOnlyDashboard ) {
+						return null;
+					}
 					const dates = select( CORE_USER ).getDateRangeDates( {
 						offsetDays: DATE_RANGE_OFFSET,
 					} );
@@ -149,8 +159,16 @@ function DashboardPopularKeywordsWidget( {
 					);
 				} );
 
+				if ( viewOnlyDashboard ) {
+					return <span>{ fieldValue }</span>;
+				}
+
 				return (
-					<Link href={ searchAnalyticsURL } external inherit>
+					<Link
+						href={ searchAnalyticsURL }
+						external
+						hideExternalIndicator
+					>
 						{ fieldValue }
 					</Link>
 				);
@@ -162,9 +180,11 @@ function DashboardPopularKeywordsWidget( {
 				'Number of times users clicked on your content in search results',
 				'google-site-kit'
 			),
-			Component: ( { row } ) => (
-				<span>{ numFmt( row.clicks, { style: 'decimal' } ) }</span>
-			),
+			Component( { row } ) {
+				return (
+					<span>{ numFmt( row.clicks, { style: 'decimal' } ) }</span>
+				);
+			},
 		},
 		{
 			title: __( 'Impressions', 'google-site-kit' ),
@@ -172,21 +192,26 @@ function DashboardPopularKeywordsWidget( {
 				'Counted each time your content appears in search results',
 				'google-site-kit'
 			),
-			Component: ( { row } ) => (
-				<span>{ numFmt( row.impressions, { style: 'decimal' } ) }</span>
-			),
+			Component( { row } ) {
+				return (
+					<span>
+						{ numFmt( row.impressions, { style: 'decimal' } ) }
+					</span>
+				);
+			},
 		},
 	];
 
 	return (
 		<Widget noPadding Footer={ Footer }>
 			<TableOverflowContainer>
-				<ReportTable rows={ data } columns={ tableColumns } />
+				<ReportTable
+					rows={ data }
+					columns={ tableColumns }
+					zeroState={ ZeroDataMessage }
+					gatheringData={ isGatheringData }
+				/>
 			</TableOverflowContainer>
 		</Widget>
 	);
 }
-
-export default whenActive( { moduleName: 'search-console' } )(
-	DashboardPopularKeywordsWidget
-);

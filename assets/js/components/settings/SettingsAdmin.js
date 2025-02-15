@@ -19,112 +19,155 @@
 /**
  * WordPress dependencies
  */
-import { useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { addQueryArgs } from '@wordpress/url';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { CORE_MODULES } from '../../googlesitekit/modules/datastore/constants';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
-import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
-import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import { MODULES_SEARCH_CONSOLE } from '../../modules/search-console/datastore/constants';
+import { MODULES_ANALYTICS_4 } from '../../modules/analytics-4/datastore/constants';
 import Layout from '../layout/Layout';
 import { Grid, Cell, Row } from '../../material-components';
 import OptIn from '../OptIn';
-import VisuallyHidden from '../VisuallyHidden';
 import ResetButton from '../ResetButton';
-import UserInputPreview from '../user-input/UserInputPreview';
-import { USER_INPUT_QUESTIONS_LIST } from '../user-input/util/constants';
-import UserInputSettings from '../notifications/UserInputSettings';
-import { useFeature } from '../../hooks/useFeature';
-import { trackEvent } from '../../util';
+import SettingsCardConsentMode from './SettingsCardConsentMode';
+import SettingsCardKeyMetrics from './SettingsCardKeyMetrics';
 import SettingsPlugin from './SettingsPlugin';
-const { useSelect, useDispatch } = Data;
+import ConnectedIcon from '../../../svg/icons/connected.svg';
+import PreviewBlock from '../PreviewBlock';
+import SettingsCardVisitorGroups from '../../modules/analytics-4/components/audience-segmentation/settings/SettingsCardVisitorGroups';
+import { useFeature } from '../../hooks/useFeature';
 
 export default function SettingsAdmin() {
-	const userInputEnabled = useFeature( 'userInput' );
-	const isUserInputCompleted = useSelect(
+	const audienceSegmentationEnabled = useFeature( 'audienceSegmentation' );
+
+	const configuredAudiences = useSelect(
 		( select ) =>
-			userInputEnabled &&
-			select( CORE_USER ).getUserInputState() === 'completed'
+			audienceSegmentationEnabled &&
+			select( CORE_USER ).getConfiguredAudiences()
 	);
-	const userInputURL = useSelect( ( select ) =>
-		select( CORE_SITE ).getAdminURL( 'googlesitekit-user-input' )
+	const isAnalyticsConnected = useSelect( ( select ) =>
+		select( CORE_MODULES ).isModuleConnected( 'analytics-4' )
 	);
-
-	const { navigateTo } = useDispatch( CORE_LOCATION );
-	const goTo = ( questionIndex = 1 ) => {
-		const questionSlug = USER_INPUT_QUESTIONS_LIST[ questionIndex - 1 ];
-		if ( questionSlug ) {
-			trackEvent( 'user_input', 'settings_edit', questionSlug );
-
-			navigateTo(
-				addQueryArgs( userInputURL, {
-					question: questionSlug,
-					redirect_url: global.location.href,
-					single: 'settings', // Allows the user to edit a single question then return to the settings page.
-				} )
-			);
+	const isSearchConsoleGatheringData = useSelect( ( select ) =>
+		select( MODULES_SEARCH_CONSOLE ).isGatheringData()
+	);
+	const isAnalyticsGatheringData = useSelect( ( select ) => {
+		if ( ! isAnalyticsConnected ) {
+			return false;
 		}
-	};
 
-	useEffect( () => {
-		if ( isUserInputCompleted ) {
-			trackEvent( 'user_input', 'settings_view' );
+		return select( MODULES_ANALYTICS_4 ).isGatheringData();
+	} );
+
+	const showKeyMetricsSettings =
+		isAnalyticsConnected &&
+		isSearchConsoleGatheringData === false &&
+		isAnalyticsGatheringData === false;
+
+	const showKeyMetricsSettingsLoading = useSelect( ( select ) => {
+		if (
+			! select( CORE_MODULES ).hasFinishedResolution(
+				'isModuleConnected',
+				[ 'analytics-4' ]
+			)
+		) {
+			return true;
 		}
-	}, [ isUserInputCompleted ] );
+
+		// The resolvers below are never resolved if Analytics is disconnected,
+		// so if it's disconnected, return early.
+		//
+		// Because they're never called nothing else can be loading.
+		if ( isAnalyticsConnected === false ) {
+			return false;
+		}
+
+		if (
+			! select( MODULES_SEARCH_CONSOLE ).hasFinishedResolution(
+				'isGatheringData'
+			) ||
+			! select( MODULES_ANALYTICS_4 ).hasFinishedResolution(
+				'isGatheringData'
+			)
+		) {
+			return true;
+		}
+
+		return false;
+	} );
+
+	// Show a loading skeleton to prevent a layout shift.
+	if ( showKeyMetricsSettingsLoading ) {
+		return (
+			<Row>
+				<Cell size={ 12 }>
+					<PreviewBlock
+						width="100%"
+						smallHeight="100px"
+						tabletHeight="100px"
+						desktopHeight="200px"
+					/>
+				</Cell>
+				<Cell size={ 12 }>
+					<PreviewBlock
+						width="100%"
+						smallHeight="100px"
+						tabletHeight="100px"
+						desktopHeight="200px"
+					/>
+				</Cell>
+				<Cell size={ 12 }>
+					<PreviewBlock
+						width="100%"
+						smallHeight="100px"
+						tabletHeight="100px"
+						desktopHeight="200px"
+					/>
+				</Cell>
+				<Cell size={ 12 }>
+					<PreviewBlock
+						width="100%"
+						smallHeight="100px"
+						tabletHeight="100px"
+						desktopHeight="200px"
+					/>
+				</Cell>
+			</Row>
+		);
+	}
 
 	return (
 		<Row>
-			{ userInputEnabled && (
-				<Cell size={ 12 }>
-					{ isUserInputCompleted && (
-						<Layout>
-							<div className="googlesitekit-settings-module googlesitekit-settings-module--active googlesitekit-settings-user-input">
-								<Grid>
-									<Row>
-										<Cell size={ 12 }>
-											<h3 className="googlesitekit-heading-4 googlesitekit-settings-module__title">
-												{ __(
-													'Your site goals',
-													'google-site-kit'
-												) }
-											</h3>
-											<p>
-												{ __(
-													'Based on your responses, Site Kit will show you metrics and suggestions that are specific to your site to help you achieve your goals',
-													'google-site-kit'
-												) }
-											</p>
-										</Cell>
-									</Row>
+			<Cell size={ 12 }>
+				<SettingsCardConsentMode />
+			</Cell>
 
-									<UserInputPreview goTo={ goTo } noFooter />
-								</Grid>
-							</div>
-						</Layout>
-					) }
-					{ ! isUserInputCompleted && (
-						<UserInputSettings isDismissable={ false } />
-					) }
+			{ showKeyMetricsSettings && (
+				<Cell size={ 12 }>
+					<SettingsCardKeyMetrics />
 				</Cell>
 			) }
 
+			{ audienceSegmentationEnabled &&
+				( isAnalyticsConnected || !! configuredAudiences ) && (
+					<Cell size={ 12 }>
+						<SettingsCardVisitorGroups />
+					</Cell>
+				) }
+
 			<Cell size={ 12 }>
-				<Layout>
+				<Layout
+					title={ __( 'Plugin Status', 'google-site-kit' ) }
+					header
+					rounded
+				>
 					<div className="googlesitekit-settings-module googlesitekit-settings-module--active">
 						<Grid>
 							<Row>
-								<Cell size={ 12 }>
-									<h3 className="googlesitekit-heading-4 googlesitekit-settings-module__title">
-										{ __(
-											'Plugin Status',
-											'google-site-kit'
-										) }
-									</h3>
-								</Cell>
 								<Cell size={ 12 }>
 									<div className="googlesitekit-settings-module__meta-items">
 										<p className="googlesitekit-settings-module__status">
@@ -133,12 +176,10 @@ export default function SettingsAdmin() {
 												'google-site-kit'
 											) }
 											<span className="googlesitekit-settings-module__status-icon googlesitekit-settings-module__status-icon--connected">
-												<VisuallyHidden>
-													{ __(
-														'Connected',
-														'google-site-kit'
-													) }
-												</VisuallyHidden>
+												<ConnectedIcon
+													width={ 10 }
+													height={ 8 }
+												/>
 											</span>
 										</p>
 									</div>
@@ -169,6 +210,7 @@ export default function SettingsAdmin() {
 					title={ __( 'Tracking', 'google-site-kit' ) }
 					header
 					fill
+					rounded
 				>
 					<div className="googlesitekit-settings-module googlesitekit-settings-module--active">
 						<Grid>
@@ -176,7 +218,7 @@ export default function SettingsAdmin() {
 								<Cell size={ 12 }>
 									<div className="googlesitekit-settings-module__meta-items">
 										<div className="googlesitekit-settings-module__meta-item googlesitekit-settings-module__meta-item--nomargin">
-											<OptIn optinAction="analytics_optin_settings_page" />
+											<OptIn />
 										</div>
 									</div>
 								</Cell>

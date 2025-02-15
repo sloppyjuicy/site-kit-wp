@@ -76,7 +76,7 @@ final class Activation_Notice {
 	public function register() {
 		add_filter(
 			'googlesitekit_admin_notices',
-			function( $notices ) {
+			function ( $notices ) {
 				$notices[] = $this->get_activation_notice();
 				return $notices;
 			}
@@ -84,7 +84,7 @@ final class Activation_Notice {
 
 		add_action(
 			'admin_enqueue_scripts',
-			function( $hook_suffix ) {
+			function ( $hook_suffix ) {
 				if ( 'plugins.php' !== $hook_suffix || ! $this->activation_flag->get_activation_flag( is_network_admin() ) ) {
 					return;
 				}
@@ -96,7 +96,6 @@ final class Activation_Notice {
 				 */
 				unset( $_GET['activate'] ); // phpcs:ignore WordPress.Security.NonceVerification, WordPress.VIP.SuperGlobalInputUsage
 
-				$this->assets->enqueue_fonts();
 				$this->assets->enqueue_asset( 'googlesitekit-admin-css' );
 				$this->assets->enqueue_asset( 'googlesitekit-activation' );
 			}
@@ -114,7 +113,7 @@ final class Activation_Notice {
 		return new Notice(
 			'activated',
 			array(
-				'content'         => function() {
+				'content'         => function () {
 					ob_start();
 					?>
 					<div class="googlesitekit-plugin">
@@ -139,7 +138,7 @@ final class Activation_Notice {
 					return ob_get_clean();
 				},
 				'type'            => Notice::TYPE_SUCCESS,
-				'active_callback' => function( $hook_suffix ) {
+				'active_callback' => function ( $hook_suffix ) {
 					if ( 'plugins.php' !== $hook_suffix ) {
 						return false;
 					}

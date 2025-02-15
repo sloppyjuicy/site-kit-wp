@@ -18,17 +18,21 @@ use Google\Site_Kit\Core\Authentication\Google_Proxy;
 use Google\Site_Kit\Core\Authentication\Owner_ID;
 use Google\Site_Kit\Core\Authentication\Profile;
 use Google\Site_Kit\Core\Authentication\Token;
+use Google\Site_Kit\Core\Dashboard_Sharing\Activity_Metrics\Activity_Metrics;
+use Google\Site_Kit\Core\Dashboard_Sharing\Activity_Metrics\Active_Consumers;
 use Google\Site_Kit\Core\Permissions\Permissions;
 use Google\Site_Kit\Core\Storage\Options;
 use Google\Site_Kit\Core\Storage\User_Options;
 use Google\Site_Kit\Core\Util\Scopes;
+use Google\Site_Kit\Core\Util\URL;
 use Google\Site_Kit_Dependencies\Google\Service\PeopleService as Google_Service_PeopleService;
+use WP_User;
 
 /**
  * Class for connecting to Google APIs via OAuth.
  *
  * @since 1.0.0
- * @since n.e.x.t Now extends `OAuth_Client_Base`.
+ * @since 1.39.0 Now extends `OAuth_Client_Base`.
  * @access private
  * @ignore
  */
@@ -36,6 +40,7 @@ final class OAuth_Client extends OAuth_Client_Base {
 
 	const OPTION_ADDITIONAL_AUTH_SCOPES = 'googlesitekit_additional_auth_scopes';
 	const OPTION_REDIRECT_URL           = 'googlesitekit_redirect_url';
+	const OPTION_ERROR_REDIRECT_URL     = 'googlesitekit_error_redirect_url';
 	const CRON_REFRESH_PROFILE_DATA     = 'googlesitekit_cron_refresh_profile_data';
 
 	/**
@@ -45,6 +50,22 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * @var Owner_ID
 	 */
 	private $owner_id;
+
+	/**
+	 * Activity_Metrics instance.
+	 *
+	 * @since 1.87.0
+	 * @var Activity_Metrics
+	 */
+	private $activity_metrics;
+
+	/**
+	 * Active_Consumers instance.
+	 *
+	 * @since 1.87.0
+	 * @var Active_Consumers
+	 */
+	private $active_consumers;
 
 	/**
 	 * Constructor.
@@ -78,7 +99,9 @@ final class OAuth_Client extends OAuth_Client_Base {
 			$token
 		);
 
-		$this->owner_id = new Owner_ID( $this->options );
+		$this->owner_id         = new Owner_ID( $this->options );
+		$this->activity_metrics = new Activity_Metrics( $this->context, $this->user_options );
+		$this->active_consumers = new Active_Consumers( $this->user_options );
 	}
 
 	/**
@@ -98,13 +121,10 @@ final class OAuth_Client extends OAuth_Client_Base {
 			return;
 		}
 
-		// Stop if google_client not initialized yet.
-		if ( ! $this->google_client instanceof Google_Site_Kit_Client ) {
-			return;
-		}
+		$active_consumers = $this->activity_metrics->get_for_refresh_token();
 
 		try {
-			$token_response = $this->google_client->fetchAccessTokenWithRefreshToken( $token['refresh_token'] );
+			$token_response = $this->get_client()->fetchAccessTokenWithRefreshToken( $token['refresh_token'], $active_consumers );
 		} catch ( \Exception $e ) {
 			$this->handle_fetch_token_exception( $e );
 			return;
@@ -115,6 +135,7 @@ final class OAuth_Client extends OAuth_Client_Base {
 			return;
 		}
 
+		$this->active_consumers->delete();
 		$this->set_token( $token_response );
 	}
 
@@ -197,7 +218,7 @@ final class OAuth_Client extends OAuth_Client_Base {
 		$granted_scopes     = $this->get_granted_scopes();
 		$unsatisfied_scopes = array_filter(
 			$scopes,
-			function( $scope ) use ( $granted_scopes ) {
+			function ( $scope ) use ( $granted_scopes ) {
 				return ! Scopes::is_satisfied_by( $scope, $granted_scopes );
 			}
 		);
@@ -265,7 +286,7 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * Sets the current user's OAuth access token.
 	 *
 	 * @since 1.0.0
-	 * @deprecated n.e.x.t Use `OAuth_Client::set_token` instead.
+	 * @deprecated 1.39.0 Use `OAuth_Client::set_token` instead.
 	 *
 	 * @param string $access_token New access token.
 	 * @param int    $expires_in   TTL of the access token in seconds.
@@ -273,7 +294,7 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * @return bool True on success, false on failure.
 	 */
 	public function set_access_token( $access_token, $expires_in, $created = 0 ) {
-		_deprecated_function( __METHOD__, 'n.e.x.t', self::class . '::set_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		_deprecated_function( __METHOD__, '1.39.0', self::class . '::set_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		return $this->set_token(
 			array(
@@ -288,12 +309,12 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * Gets the current user's OAuth refresh token.
 	 *
 	 * @since 1.0.0
-	 * @deprecated n.e.x.t Use `OAuth_Client::get_token` instead.
+	 * @deprecated 1.39.0 Use `OAuth_Client::get_token` instead.
 	 *
 	 * @return string|bool Refresh token if it exists, false otherwise.
 	 */
 	public function get_refresh_token() {
-		_deprecated_function( __METHOD__, 'n.e.x.t', self::class . '::get_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		_deprecated_function( __METHOD__, '1.39.0', self::class . '::get_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		$token = $this->get_token();
 		if ( empty( $token['refresh_token'] ) ) {
@@ -306,13 +327,13 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * Sets the current user's OAuth refresh token.
 	 *
 	 * @since 1.0.0
-	 * @deprecated n.e.x.t Use `OAuth_Client::set_token` instead.
+	 * @deprecated 1.39.0 Use `OAuth_Client::set_token` instead.
 	 *
 	 * @param string $refresh_token New refresh token.
 	 * @return bool True on success, false on failure.
 	 */
 	public function set_refresh_token( $refresh_token ) {
-		_deprecated_function( __METHOD__, 'n.e.x.t', self::class . '::set_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		_deprecated_function( __METHOD__, '1.39.0', self::class . '::set_token' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		$token                  = $this->get_token();
 		$token['refresh_token'] = $refresh_token;
@@ -327,10 +348,11 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * @since 1.34.1 Updated handling of $additional_scopes to restore rewritten scope.
 	 *
 	 * @param string   $redirect_url      Redirect URL after authentication.
+	 * @param string   $error_redirect_url Redirect URL after authentication error.
 	 * @param string[] $additional_scopes List of additional scopes to request.
 	 * @return string Authentication URL.
 	 */
-	public function get_authentication_url( $redirect_url = '', $additional_scopes = array() ) {
+	public function get_authentication_url( $redirect_url = '', $error_redirect_url = '', $additional_scopes = array() ) {
 		if ( empty( $redirect_url ) ) {
 			$redirect_url = $this->context->admin_url( 'splash' );
 		}
@@ -347,21 +369,29 @@ final class OAuth_Client extends OAuth_Client_Base {
 			$additional_scopes = array();
 		}
 
-		$redirect_url = add_query_arg( array( 'notification' => 'authentication_success' ), $redirect_url );
+		$url_query = URL::parse( $redirect_url, PHP_URL_QUERY );
+
+		if ( $url_query ) {
+			parse_str( $url_query, $query_args );
+		}
+
+		if ( empty( $query_args['notification'] ) ) {
+			$redirect_url = add_query_arg( array( 'notification' => 'authentication_success' ), $redirect_url );
+		}
 		// Ensure we remove error query string.
 		$redirect_url = remove_query_arg( 'error', $redirect_url );
 
 		$this->user_options->set( self::OPTION_REDIRECT_URL, $redirect_url );
+		$this->user_options->set( self::OPTION_ERROR_REDIRECT_URL, $error_redirect_url );
 
 		// Ensure the latest required scopes are requested.
 		$scopes = array_merge( $this->get_required_scopes(), $additional_scopes );
 		$this->get_client()->setScopes( array_unique( $scopes ) );
 
-		$query_params = array(
-			'hl' => $this->context->get_locale( 'user' ),
+		return add_query_arg(
+			$this->google_proxy->get_metadata_fields(),
+			$this->get_client()->createAuthUrl()
 		);
-
-		return add_query_arg( $query_params, $this->get_client()->createAuthUrl() );
 	}
 
 	/**
@@ -369,20 +399,21 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * screen if present.
 	 *
 	 * @since 1.0.0
+	 * @since 1.49.0 Uses the new `Google_Proxy::setup_url_v2` method when the `serviceSetupV2` feature flag is enabled.
 	 */
 	public function authorize_user() {
-		$code       = $this->context->input()->filter( INPUT_GET, 'code', FILTER_SANITIZE_STRING );
-		$error_code = $this->context->input()->filter( INPUT_GET, 'error', FILTER_SANITIZE_STRING );
+		$code       = htmlspecialchars( $this->context->input()->filter( INPUT_GET, 'code' ) ?? '' );
+		$error_code = htmlspecialchars( $this->context->input()->filter( INPUT_GET, 'error' ) ?? '' );
 		// If the OAuth redirects with an error code, handle it.
 		if ( ! empty( $error_code ) ) {
 			$this->user_options->set( self::OPTION_ERROR_CODE, $error_code );
-			wp_safe_redirect( admin_url() );
+			wp_safe_redirect( $this->authorize_user_redirect_url() );
 			exit();
 		}
 
 		if ( ! $this->credentials->has() ) {
 			$this->user_options->set( self::OPTION_ERROR_CODE, 'oauth_credentials_not_exist' );
-			wp_safe_redirect( admin_url() );
+			wp_safe_redirect( $this->authorize_user_redirect_url() );
 			exit();
 		}
 
@@ -390,17 +421,25 @@ final class OAuth_Client extends OAuth_Client_Base {
 			$token_response = $this->get_client()->fetchAccessTokenWithAuthCode( $code );
 		} catch ( Google_Proxy_Code_Exception $e ) {
 			// Redirect back to proxy immediately with the access code.
-			wp_safe_redirect( $this->get_proxy_setup_url( $e->getAccessCode(), $e->getMessage() ) );
+			$credentials = $this->credentials->get();
+			$params      = array(
+				'code'    => $e->getAccessCode(),
+				'site_id' => ! empty( $credentials['oauth2_client_id'] ) ? $credentials['oauth2_client_id'] : '',
+			);
+			$params      = $this->google_proxy->add_setup_step_from_error_code( $params, $e->getMessage() );
+			$url         = $this->google_proxy->setup_url( $params );
+
+			wp_safe_redirect( $url );
 			exit();
 		} catch ( Exception $e ) {
 			$this->handle_fetch_token_exception( $e );
-			wp_safe_redirect( admin_url() );
+			wp_safe_redirect( $this->authorize_user_redirect_url() );
 			exit();
 		}
 
 		if ( ! isset( $token_response['access_token'] ) ) {
 			$this->user_options->set( self::OPTION_ERROR_CODE, 'access_token_not_received' );
-			wp_safe_redirect( admin_url() );
+			wp_safe_redirect( $this->authorize_user_redirect_url() );
 			exit();
 		}
 
@@ -414,14 +453,14 @@ final class OAuth_Client extends OAuth_Client_Base {
 		if ( isset( $token_response['scope'] ) ) {
 			$scopes = explode( ' ', sanitize_text_field( $token_response['scope'] ) );
 		} elseif ( $this->context->input()->filter( INPUT_GET, 'scope' ) ) {
-			$scope  = $this->context->input()->filter( INPUT_GET, 'scope', FILTER_SANITIZE_STRING );
+			$scope  = htmlspecialchars( $this->context->input()->filter( INPUT_GET, 'scope' ) );
 			$scopes = explode( ' ', $scope );
 		} else {
 			$scopes = $this->get_required_scopes();
 		}
 		$scopes = array_filter(
 			$scopes,
-			function( $scope ) {
+			function ( $scope ) {
 				if ( ! is_string( $scope ) ) {
 					return false;
 				}
@@ -462,12 +501,19 @@ final class OAuth_Client extends OAuth_Client_Base {
 		$redirect_url = $this->user_options->get( self::OPTION_REDIRECT_URL );
 
 		if ( $redirect_url ) {
-			$parts  = wp_parse_url( $redirect_url );
-			$reauth = strpos( $parts['query'], 'reAuth=true' );
-			if ( false === $reauth ) {
+			$url_query = URL::parse( $redirect_url, PHP_URL_QUERY );
+
+			if ( $url_query ) {
+				parse_str( $url_query, $query_args );
+			}
+
+			$reauth = isset( $query_args['reAuth'] ) && 'true' === $query_args['reAuth'];
+
+			if ( false === $reauth && empty( $query_args['notification'] ) ) {
 				$redirect_url = add_query_arg( array( 'notification' => 'authentication_success' ), $redirect_url );
 			}
 			$this->user_options->delete( self::OPTION_REDIRECT_URL );
+			$this->user_options->delete( self::OPTION_ERROR_REDIRECT_URL );
 		} else {
 			// No redirect_url is set, use default page.
 			$redirect_url = $this->context->admin_url( 'splash', array( 'notification' => 'authentication_success' ) );
@@ -486,15 +532,20 @@ final class OAuth_Client extends OAuth_Client_Base {
 	 * @param int $retry_after Optional. Number of seconds to retry data fetch if unsuccessful.
 	 */
 	public function refresh_profile_data( $retry_after = 0 ) {
-		try {
-			$people_service = new Google_Service_PeopleService( $this->get_client() );
-			$response       = $people_service->people->get( 'people/me', array( 'personFields' => 'emailAddresses,photos' ) );
+		$client        = $this->get_client();
+		$restore_defer = $client->withDefer( false );
 
-			if ( isset( $response['emailAddresses'][0]['value'], $response['photos'][0]['url'] ) ) {
+		try {
+			$people_service = new Google_Service_PeopleService( $client );
+			$response       = $people_service->people->get( 'people/me', array( 'personFields' => 'emailAddresses,photos,names' ) );
+
+			if ( isset( $response['emailAddresses'][0]['value'], $response['photos'][0]['url'], $response['names'][0]['displayName'] ) ) {
 				$this->profile->set(
 					array(
-						'email' => $response['emailAddresses'][0]['value'],
-						'photo' => $response['photos'][0]['url'],
+						'email'        => $response['emailAddresses'][0]['value'],
+						'photo'        => $response['photos'][0]['url'],
+						'full_name'    => $response['names'][0]['displayName'],
+						'last_updated' => time(),
 					)
 				);
 			}
@@ -513,46 +564,9 @@ final class OAuth_Client extends OAuth_Client_Base {
 				self::CRON_REFRESH_PROFILE_DATA,
 				array( $this->user_options->get_user_id() )
 			);
+		} finally {
+			$restore_defer();
 		}
-	}
-
-	/**
-	 * Determines whether the authentication proxy is used.
-	 *
-	 * In order to streamline the setup and authentication flow, the plugin uses a proxy mechanism based on an external
-	 * service. This can be overridden by providing actual GCP credentials with the {@see 'googlesitekit_oauth_secret'}
-	 * filter.
-	 *
-	 * @since 1.0.0
-	 * @deprecated 1.9.0
-	 *
-	 * @return bool True if proxy authentication is used, false otherwise.
-	 */
-	public function using_proxy() {
-		_deprecated_function( __METHOD__, '1.9.0', Credentials::class . '::using_proxy' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-
-		return $this->credentials->using_proxy();
-	}
-
-	/**
-	 * Returns the setup URL to the authentication proxy.
-	 *
-	 * @since 1.0.0
-	 * @since 1.1.2 Added googlesitekit_proxy_setup_url_params filter.
-	 * @since 1.27.0 Error code is no longer used.
-	 *
-	 * @param string $access_code Optional. Temporary access code for an undelegated access token. Default empty string.
-	 * @return string URL to the setup page on the authentication proxy.
-	 */
-	public function get_proxy_setup_url( $access_code = '' ) {
-		$scope = rawurlencode( implode( ' ', $this->get_required_scopes() ) );
-
-		$query_params = array( 'scope' => $scope );
-		if ( ! empty( $access_code ) ) {
-			$query_params['code'] = $access_code;
-		}
-
-		return $this->google_proxy->setup_url( $this->credentials, $query_params );
 	}
 
 	/**
@@ -611,6 +625,37 @@ final class OAuth_Client extends OAuth_Client_Base {
 		parent::delete_token();
 
 		$this->user_options->delete( self::OPTION_REDIRECT_URL );
+		$this->user_options->delete( self::OPTION_ERROR_REDIRECT_URL );
 		$this->user_options->delete( self::OPTION_ADDITIONAL_AUTH_SCOPES );
+	}
+
+	/**
+	 * Return the URL for the user to view the dashboard/splash
+	 * page based on their permissions.
+	 *
+	 * @since 1.77.0
+	 */
+	private function authorize_user_redirect_url() {
+		$error_redirect_url = $this->user_options->get( self::OPTION_ERROR_REDIRECT_URL );
+
+		if ( $error_redirect_url ) {
+			$this->user_options->delete( self::OPTION_ERROR_REDIRECT_URL );
+			return $error_redirect_url;
+		}
+
+		return current_user_can( Permissions::VIEW_DASHBOARD )
+			? $this->context->admin_url( 'dashboard' )
+			: $this->context->admin_url( 'splash' );
+	}
+
+	/**
+	 * Adds a user to the active consumers list.
+	 *
+	 * @since 1.87.0
+	 *
+	 * @param WP_User $user User object.
+	 */
+	public function add_active_consumer( WP_User $user ) {
+		$this->active_consumers->add( $user->ID, $user->roles );
 	}
 }

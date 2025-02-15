@@ -25,6 +25,7 @@ import invariant from 'invariant';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
+import { createRegistrySelector } from 'googlesitekit-data';
 import { CORE_FORMS } from '../../../googlesitekit/datastore/forms/constants';
 import {
 	isValidAccountID,
@@ -48,8 +49,8 @@ import {
 } from '../../../googlesitekit/data/create-settings-store';
 import { CORE_MODULES } from '../../../googlesitekit/modules/datastore/constants';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
-import { MODULES_ANALYTICS } from '../../analytics/datastore/constants';
 import { createStrictSelect } from '../../../googlesitekit/data/utils';
+import { MODULES_ANALYTICS_4 } from '../../analytics-4/datastore/constants';
 
 // Invariant error messages.
 export const INVARIANT_INVALID_ACCOUNT_ID =
@@ -64,12 +65,20 @@ export const INVARIANT_INVALID_INTERNAL_CONTAINER_ID =
 	'a valid internalContainerID is required to submit changes';
 export const INVARIANT_INVALID_CONTAINER_NAME =
 	'a valid container name is required to submit changes';
-export const INVARIANT_MULTIPLE_ANALYTICS_PROPERTY_IDS =
-	'containers with Analytics tags must reference a single property ID to submit changes';
 export const INVARIANT_GTM_GA_PROPERTY_ID_MISMATCH =
 	'single GTM Analytics property ID must match Analytics property ID';
-export const INVARIANT_INSUFFICIENT_EXISTING_TAG_PERMISSION =
-	'existing tag permission is required to submit changes';
+
+const store = {
+	selectors: {
+		areSettingsEditDependenciesLoaded: createRegistrySelector(
+			( select ) => () =>
+				select( MODULES_TAGMANAGER ).hasFinishedResolution(
+					'getAccounts'
+				)
+		),
+	},
+};
+export default store;
 
 export async function submitChanges( { select, dispatch } ) {
 	const accountID = select( MODULES_TAGMANAGER ).getAccountID();
@@ -134,11 +143,10 @@ export async function submitChanges( { select, dispatch } ) {
 
 		// Fetch the latest settings in the Analytics store so that we can update
 		// the filtered value of canUseSnippet.
-		const analyticsModuleConnected = select(
-			CORE_MODULES
-		).isModuleConnected( 'analytics' );
+		const analyticsModuleConnected =
+			select( CORE_MODULES ).isModuleConnected( 'analytics-4' );
 		if ( analyticsModuleConnected ) {
-			await dispatch( MODULES_ANALYTICS ).fetchGetSettings();
+			await dispatch( MODULES_ANALYTICS_4 ).fetchGetSettings();
 		}
 	}
 
@@ -159,17 +167,10 @@ export function validateCanSubmitChanges( select ) {
 		getAMPContainerID,
 		getInternalContainerID,
 		getInternalAMPContainerID,
-		getSingleAnalyticsPropertyID,
-		hasAnyAnalyticsPropertyID,
-		hasExistingTag,
-		hasExistingTagPermission,
-		hasMultipleAnalyticsPropertyIDs,
 		haveSettingsChanged,
 		isDoingSubmitChanges,
 	} = strictSelect( MODULES_TAGMANAGER );
 	const { isAMP, isSecondaryAMP } = strictSelect( CORE_SITE );
-	const { isModuleActive } = strictSelect( CORE_MODULES );
-	const { getPropertyID } = strictSelect( MODULES_ANALYTICS );
 
 	const accountID = getAccountID();
 
@@ -190,9 +191,8 @@ export function validateCanSubmitChanges( select ) {
 		);
 
 		const containers = getContainers( accountID );
-		const normalizedContainerName = getNormalizedContainerName(
-			containerName
-		);
+		const normalizedContainerName =
+			getNormalizedContainerName( containerName );
 		invariant(
 			isUniqueContainerName( containerName, containers ),
 			`a container with "${ normalizedContainerName }" name already exists`
@@ -226,9 +226,8 @@ export function validateCanSubmitChanges( select ) {
 			);
 
 			const containers = getContainers( accountID );
-			const normalizedContainerName = getNormalizedContainerName(
-				ampContainerName
-			);
+			const normalizedContainerName =
+				getNormalizedContainerName( ampContainerName );
 			invariant(
 				isUniqueContainerName( ampContainerName, containers ),
 				`an AMP container with "${ normalizedContainerName }" name already exists`
@@ -249,29 +248,5 @@ export function validateCanSubmitChanges( select ) {
 				INVARIANT_INVALID_INTERNAL_CONTAINER_ID
 			);
 		}
-	}
-
-	invariant(
-		! hasMultipleAnalyticsPropertyIDs(),
-		INVARIANT_MULTIPLE_ANALYTICS_PROPERTY_IDS
-	);
-
-	if (
-		isModuleActive( 'analytics' ) &&
-		getPropertyID() &&
-		hasAnyAnalyticsPropertyID()
-	) {
-		invariant(
-			getSingleAnalyticsPropertyID() === getPropertyID(),
-			INVARIANT_GTM_GA_PROPERTY_ID_MISMATCH
-		);
-	}
-
-	// Do existing tag check last.
-	if ( hasExistingTag() ) {
-		invariant(
-			hasExistingTagPermission(),
-			INVARIANT_INSUFFICIENT_EXISTING_TAG_PERMISSION
-		);
 	}
 }

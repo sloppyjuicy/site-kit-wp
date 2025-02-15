@@ -25,7 +25,12 @@ import { createHashHistory } from 'history';
  * Internal dependencies
  */
 import SettingsModules from './SettingsModules';
-import { render, createTestRegistry } from '../../../../tests/js/test-utils';
+import {
+	render,
+	createTestRegistry,
+	provideModules,
+	muteFetch,
+} from '../../../../tests/js/test-utils';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import { CORE_MODULES } from '../../googlesitekit/modules/datastore/constants';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
@@ -59,20 +64,29 @@ describe( 'SettingsModules', () => {
 	} );
 
 	it( 'should redirect from #connect to #/connect-more-services', async () => {
-		// Receive empty modules to prevent having to manage dependencies, etc. for
-		// the "connect more" screen, as we're only testing the routing behaviour
-		// here.
 		registry = createTestRegistry();
-		registry.dispatch( CORE_MODULES ).receiveGetModules( [] );
+
+		provideModules( registry );
 		history.push( '/connect' );
 
-		render( <SettingsModules />, { history, registry } );
+		const { waitForRegistry } = render( <SettingsModules />, {
+			history,
+			registry,
+		} );
+
+		await waitForRegistry();
 
 		expect( global.location.hash ).toEqual( '#/connect-more-services' );
 	} );
 
 	it( 'should redirect from #admin to #/admin-settings', async () => {
-		const coreUserTrackingSettingsEndpointRegExp = /^\/google-site-kit\/v1\/core\/user\/data\/tracking/;
+		const coreUserTrackingSettingsEndpointRegExp = new RegExp(
+			'^/google-site-kit/v1/core/user/data/tracking'
+		);
+
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/modules/search-console/data' )
+		);
 		const coreUserTrackingResponse = {
 			status: 200,
 			body: { enabled: false },
@@ -88,14 +102,24 @@ describe( 'SettingsModules', () => {
 
 		await registry.dispatch( CORE_USER ).setTrackingEnabled( false );
 
+		registry.dispatch( CORE_USER ).receiveGetAudienceSettings( {
+			configuredAudiences: null,
+			isAudienceSegmentationWidgetHidden: false,
+		} );
+
 		history.push( '/admin' );
 
-		render( <SettingsModules />, { history, registry } );
+		const { waitForRegistry } = render( <SettingsModules />, {
+			history,
+			registry,
+		} );
+
+		await waitForRegistry();
 
 		expect( global.location.hash ).toEqual( '#/admin-settings' );
 	} );
 
-	it( 'should redirect from #settings to #/connected-services', async () => {
+	it( 'should redirect from #settings to #/connected-services', () => {
 		history.push( '/settings' );
 
 		render( <SettingsModules />, { history, registry } );
@@ -103,17 +127,17 @@ describe( 'SettingsModules', () => {
 		expect( global.location.hash ).toEqual( '#/connected-services' );
 	} );
 
-	it( 'should redirect from #settings/:moduleSlug/view to #/connected-services/:moduleSlug', async () => {
-		history.push( '/settings/analytics/view' );
+	it( 'should redirect from #settings/:moduleSlug/view to #/connected-services/:moduleSlug', () => {
+		history.push( '/settings/analytics-4/view' );
 
 		render( <SettingsModules />, { history, registry } );
 
 		expect( global.location.hash ).toEqual(
-			'#/connected-services/analytics'
+			'#/connected-services/analytics-4'
 		);
 	} );
 
-	it( 'should redirect from #settings/:moduleSlug/edit to #/connected-services/:moduleSlug/edit', async () => {
+	it( 'should redirect from #settings/:moduleSlug/edit to #/connected-services/:moduleSlug/edit', () => {
 		history.push( '/settings/adsense/edit' );
 
 		render( <SettingsModules />, { history, registry } );
@@ -123,7 +147,7 @@ describe( 'SettingsModules', () => {
 		);
 	} );
 
-	it( 'should redirect from unknown location (fallback) to #/connected-services', async () => {
+	it( 'should redirect from unknown location (fallback) to #/connected-services', () => {
 		history.push( '/UNKNOWN_LOCATION' );
 
 		render( <SettingsModules />, { history, registry } );

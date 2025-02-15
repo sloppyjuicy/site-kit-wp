@@ -19,22 +19,20 @@
 /**
  * External dependencies
  */
-import copyToClipboard from 'clipboard-copy';
 import PropTypes from 'prop-types';
 
 /**
  * WordPress dependencies
  */
-import { Component, Fragment } from '@wordpress/element';
+import { Component } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Icon, check, stack } from '@wordpress/icons';
 
 /**
  * Internal dependencies
  */
-import Notification from '../legacy-notifications/notification';
-import Link from '../Link';
-import Button from '../Button';
+import GenericErrorHandlerActions from '../GenericErrorHandlerActions';
+import ViewContextContext from '../Root/ViewContextContext';
+import Notification from '../notifications/BannerNotification';
 import { trackEvent } from '../../util';
 
 class ErrorHandler extends Component {
@@ -46,76 +44,45 @@ class ErrorHandler extends Component {
 			info: null,
 			copied: false,
 		};
-
-		this.onErrorClick = this.onErrorClick.bind( this );
 	}
 
 	componentDidCatch( error, info ) {
-		const { viewContext = 'unknown' } = this.props;
 		global.console.error( 'Caught an error:', error, info );
 
 		this.setState( { error, info } );
 
 		trackEvent(
 			'react_error',
-			`handle_${ viewContext }_error`,
+			`handle_${ this.context || 'unknown' }_error`,
 			// label has a max-length of 500 bytes.
 			`${ error?.message }\n${ info?.componentStack }`.slice( 0, 500 )
 		);
 	}
 
-	onErrorClick() {
-		const { error, info } = this.state;
-
-		// Copy message with wrapping backticks for code block formatting on wp.org.
-		copyToClipboard( `\`${ error?.message }\n${ info?.componentStack }\`` );
-
-		this.setState( { copied: true } );
-	}
-
 	render() {
 		const { children } = this.props;
-		const { error, info, copied } = this.state;
+		const { error, info } = this.state;
 
 		// If there is no caught error, render the children components normally.
 		if ( ! error ) {
 			return children;
 		}
 
-		const icon = (
-			<Icon
-				className="mdc-button__icon"
-				icon={ copied ? check : stack }
-			/>
-		);
-
 		return (
 			<Notification
 				id="googlesitekit-error"
+				className="googlesitekit-error-handler"
 				title={ __(
 					'Site Kit encountered an error',
 					'google-site-kit'
 				) }
 				description={
-					<Fragment>
-						<Button
-							trailingIcon={ icon }
-							onClick={ this.onErrorClick }
-						>
-							{ __(
-								'Copy error to clipboard',
-								'google-site-kit'
-							) }
-						</Button>
-						<Link
-							href="https://wordpress.org/support/plugin/google-site-kit/"
-							external
-						>
-							{ __( 'Report this problem', 'google-site-kit' ) }
-						</Link>
-					</Fragment>
+					<GenericErrorHandlerActions
+						message={ error.message }
+						componentStack={ info.componentStack }
+					/>
 				}
-				isDismissable={ false }
+				isDismissible={ false }
 				format="small"
 				type="win-error"
 			>
@@ -127,6 +94,8 @@ class ErrorHandler extends Component {
 		);
 	}
 }
+
+ErrorHandler.contextType = ViewContextContext;
 
 ErrorHandler.propTypes = {
 	/** @ignore */

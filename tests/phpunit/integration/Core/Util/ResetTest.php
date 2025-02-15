@@ -25,7 +25,9 @@ use WPDieException;
  * @group Util
  */
 class ResetTest extends TestCase {
-	use OptionsTestTrait, UserOptionsTestTrait, TransientsTestTrait;
+	use OptionsTestTrait;
+	use UserOptionsTestTrait;
+	use TransientsTestTrait;
 
 	const TEST_OPTION = 'googlesitekit_test_option';
 
@@ -34,8 +36,8 @@ class ResetTest extends TestCase {
 	 */
 	protected $context_with_mutable_input;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		// Set up a test option as a way to check if reset ran or not.
 		// When the reset runs, this option will no longer exist.
@@ -51,9 +53,14 @@ class ResetTest extends TestCase {
 		update_option( 'googlesitekit-keep', 'keep' );
 
 		$post_id = $this->factory()->post->create();
+		$term_id = $this->factory()->term->create();
 		add_post_meta( $post_id, 'googlesitekitkeep', 'keep' );
 		add_post_meta( $post_id, 'googlesitekit-keep', 'keep' );
 		add_post_meta( $post_id, 'googlesitekit_keep', 'delete' );
+
+		add_term_meta( $term_id, 'googlesitekitkeep', 'keep' );
+		add_term_meta( $term_id, 'googlesitekit-keep', 'keep' );
+		add_term_meta( $term_id, 'googlesitekit_keep', 'delete' );
 
 		$this->run_reset( $context );
 
@@ -65,6 +72,11 @@ class ResetTest extends TestCase {
 		$this->assertEquals( 'keep', get_post_meta( $post_id, 'googlesitekitkeep', true ) );
 		$this->assertEquals( 'keep', get_post_meta( $post_id, 'googlesitekit-keep', true ) );
 		$this->assertEquals( '', get_post_meta( $post_id, 'googlesitekit_keep', true ) );
+
+		// Ensure term meta that do not start with googlesitekit_ are not deleted.
+		$this->assertEquals( 'keep', get_term_meta( $term_id, 'googlesitekitkeep', true ) );
+		$this->assertEquals( 'keep', get_term_meta( $term_id, 'googlesitekit-keep', true ) );
+		$this->assertEquals( '', get_term_meta( $term_id, 'googlesitekit_keep', true ) );
 	}
 
 	/**
@@ -72,13 +84,17 @@ class ResetTest extends TestCase {
 	 */
 	public function test_network_mode_all() {
 		$this->network_activate_site_kit();
+
+		// Force enable network mode.
+		add_filter( 'googlesitekit_is_network_mode', '__return_true' );
+
 		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
 		$this->assertTrue( $context->is_network_mode() );
 
 		$this->run_reset( $context );
 	}
 
-	public function test_handle_reset_action__with_bad_nonce() {
+	public function test_handle_reset_action_with_bad_nonce() {
 		remove_all_actions( 'admin_action_' . Reset::ACTION );
 		$reset = new Reset( $this->context_with_mutable_input );
 		$reset->register();
@@ -89,7 +105,7 @@ class ResetTest extends TestCase {
 			do_action( 'admin_action_' . Reset::ACTION );
 			$this->fail( 'Expected invalid nonce exception' );
 		} catch ( WPDieException $die_exception ) {
-			$this->assertContains( 'Invalid nonce', $die_exception->getMessage() );
+			$this->assertContains( $die_exception->getMessage(), array( 'The link you followed has expired.', 'Are you sure you want to do this?' ) );
 		}
 
 		$this->assertOptionExists( self::TEST_OPTION );
@@ -107,7 +123,7 @@ class ResetTest extends TestCase {
 			do_action( 'admin_action_' . Reset::ACTION );
 			$this->fail( 'Expected insufficient permissions exception' );
 		} catch ( WPDieException $die_exception ) {
-			$this->assertContains( 'permissions to set up Site Kit', $die_exception->getMessage() );
+			$this->assertStringContainsString( 'permissions to set up Site Kit', $die_exception->getMessage() );
 		}
 		$this->assertOptionExists( self::TEST_OPTION );
 	}
@@ -127,12 +143,47 @@ class ResetTest extends TestCase {
 		} catch ( RedirectException $redirect ) {
 			$redirect_url = $redirect->get_location();
 			$this->assertStringStartsWith( $this->context_with_mutable_input->admin_url( 'splash' ), $redirect_url );
-			$this->assertContains( '&googlesitekit_reset_session=1', $redirect_url );
-			$this->assertContains( '&notification=reset_success', $redirect_url );
+			$this->assertStringContainsString( '&googlesitekit_reset_session=1', $redirect_url );
+			$this->assertStringContainsString( '&notification=reset_success', $redirect_url );
 
 		}
 		// Reset ran and option no longer exists.
 		$this->assertOptionNotExists( self::TEST_OPTION );
+	}
+
+	public function test_hard_reset() {
+		add_filter( 'googlesitekit_hard_reset_enabled', '__return_true' );
+
+		$user_id         = $this->factory()->user->create();
+		$context         = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		$is_network_mode = $context->is_network_mode();
+
+		$option_name   = 'googlesitekitpersistent_option';
+		$transient_key = 'googlesitekitpersistent_transient';
+
+		if ( $is_network_mode ) {
+			update_network_option( null, $option_name, "test-{$option_name}-value" );
+			update_user_meta( $user_id, $option_name, "test-{$option_name}-value" );
+			set_site_transient( $transient_key, "test-{$transient_key}-value" );
+		} else {
+			update_option( $option_name, 'test-foo-value' );
+			update_user_option( $user_id, $option_name, "test-{$option_name}-value" );
+			set_transient( $transient_key, "test-{$transient_key}-value" );
+		}
+
+		$this->test_handle_reset_action__resets_and_redirects();
+
+		if ( $is_network_mode ) {
+			remove_all_filters( "default_site_option_{$option_name}" );
+			$this->assertFalse( get_network_option( null, $option_name ) );
+			$this->assertFalse( metadata_exists( 'user', $user_id, $option_name ) );
+			$this->assertFalse( get_site_transient( $transient_key ) );
+		} else {
+			remove_all_filters( "default_option_{$option_name}" );
+			$this->assertFalse( get_option( $option_name ) );
+			$this->assertFalse( get_user_option( $option_name, $user_id ) );
+			$this->assertFalse( get_transient( $transient_key ) );
+		}
 	}
 
 	protected function run_reset( Context $context ) {

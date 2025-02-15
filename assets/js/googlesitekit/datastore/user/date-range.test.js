@@ -21,7 +21,7 @@
  */
 import { createTestRegistry } from '../../../../../tests/js/utils';
 import { CORE_USER } from './constants';
-import { getDateString } from '../../../util/date-range';
+import { getDateString } from '../../../util';
 
 describe( 'core/user date-range', () => {
 	let registry;
@@ -96,15 +96,37 @@ describe( 'core/user date-range', () => {
 				additionalOptions = {}
 			) => {
 				registry.dispatch( CORE_USER ).setDateRange( dateRange );
+
 				expect(
 					registry.select( CORE_USER ).getDateRangeDates( {
 						...options,
 						...additionalOptions,
 					} )
 				).toEqual( expected );
+
+				if ( additionalOptions.offsetDays === undefined ) {
+					// eslint-disable-next-line no-console
+					expect( console.warn ).toHaveBeenCalled();
+				}
 			};
 
-			describe( 'with date range', () => {
+			describe( 'with date range and w/o offset', () => {
+				beforeAll( () => {
+					jest.spyOn( console, 'warn' ).mockImplementation(
+						() => {}
+					);
+				} );
+
+				afterAll( () => {
+					// eslint-disable-next-line no-console
+					console.warn.mockRestore();
+				} );
+
+				afterEach( () => {
+					// eslint-disable-next-line no-console
+					console.warn.mockClear();
+				} );
+
 				// [ dateRange, expectedReturnDates ]
 				const valuesToTest = [
 					[
@@ -307,6 +329,18 @@ describe( 'core/user date-range', () => {
 				expect(
 					registry.select( CORE_USER ).getReferenceDate()
 				).toEqual( getDateString( new Date() ) );
+			} );
+
+			it( 'should return the reference date defined in global base data when available', () => {
+				global._googlesitekitBaseData = {
+					referenceDate: '2023-09-01',
+				};
+
+				registry = createTestRegistry();
+
+				expect(
+					registry.select( CORE_USER ).getReferenceDate()
+				).toEqual( '2023-09-01' );
 			} );
 		} );
 	} );

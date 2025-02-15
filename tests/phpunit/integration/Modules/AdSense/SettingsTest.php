@@ -29,9 +29,9 @@ class SettingsTest extends SettingsTestCase {
 		$settings->register();
 
 		update_option( Settings::OPTION, array( 'accountID' => 'saved-account-id' ) );
-		$this->assertArraySubset( array( 'accountID' => 'saved-account-id' ), get_option( Settings::OPTION ) );
+		$this->assertArrayIntersection( array( 'accountID' => 'saved-account-id' ), get_option( Settings::OPTION ) );
 		add_filter( 'googlesitekit_adsense_account_id', '__return_empty_string' );
-		$this->assertArraySubset( array( 'accountID' => 'saved-account-id' ), get_option( Settings::OPTION ) );
+		$this->assertArrayIntersection( array( 'accountID' => 'saved-account-id' ), get_option( Settings::OPTION ) );
 		remove_filter( 'googlesitekit_adsense_account_id', '__return_empty_string' );
 
 		add_filter(
@@ -40,13 +40,13 @@ class SettingsTest extends SettingsTestCase {
 				return 'filtered-adsense-account-id';
 			}
 		);
-		$this->assertArraySubset( array( 'accountID' => 'filtered-adsense-account-id' ), get_option( Settings::OPTION ) );
+		$this->assertArrayIntersection( array( 'accountID' => 'filtered-adsense-account-id' ), get_option( Settings::OPTION ) );
 
 		// Default value filtered into saved value.
-		$this->assertArraySubset( array( 'useSnippet' => true ), get_option( Settings::OPTION ) );
+		$this->assertArrayIntersection( array( 'useSnippet' => true ), get_option( Settings::OPTION ) );
 		update_option( Settings::OPTION, array( 'useSnippet' => false ) );
 		// Default respects saved value.
-		$this->assertArraySubset( array( 'useSnippet' => false ), get_option( Settings::OPTION ) );
+		$this->assertArrayIntersection( array( 'useSnippet' => false ), get_option( Settings::OPTION ) );
 	}
 
 	public function test_get_default() {
@@ -55,16 +55,20 @@ class SettingsTest extends SettingsTestCase {
 
 		$this->assertEqualSetsWithIndex(
 			array(
-				'accountID'            => '',
-				'clientID'             => '',
-				'accountStatus'        => '',
-				'siteStatus'           => '',
-				'accountSetupComplete' => false,
-				'siteSetupComplete'    => false,
-				'useSnippet'           => true,
-				'ownerID'              => 0,
-				'webStoriesAdUnit'     => '',
-				'autoAdsDisabled'      => array(),
+				'accountID'                         => '',
+				'clientID'                          => '',
+				'accountStatus'                     => '',
+				'siteStatus'                        => '',
+				'accountSetupComplete'              => false,
+				'siteSetupComplete'                 => false,
+				'useSnippet'                        => true,
+				'ownerID'                           => 0,
+				'webStoriesAdUnit'                  => '',
+				'autoAdsDisabled'                   => array(),
+				'setupCompletedTimestamp'           => null,
+				'useAdBlockingRecoverySnippet'      => false,
+				'useAdBlockingRecoveryErrorSnippet' => false,
+				'adBlockingRecoverySetupStatus'     => '',
 			),
 			get_option( Settings::OPTION )
 		);
@@ -83,7 +87,7 @@ class SettingsTest extends SettingsTestCase {
 		$settings->register();
 
 		$option = $settings->get();
-		$this->assertArraySubset(
+		$this->assertArrayIntersection(
 			array(
 				'accountID'            => 'test-account-id',
 				'accountStatus'        => 'test-account-status',
@@ -110,6 +114,73 @@ class SettingsTest extends SettingsTestCase {
 		$option = $settings->get();
 		$this->assertEquals( 'test-current-account-id', $option['accountID'] );
 		$this->assertArrayNotHasKey( 'account_id', $option );
+	}
+
+	public function test_setup_completed_timestamp__new_setup() {
+		$settings = new Settings( new Options( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) ) );
+		$settings->register();
+
+		$this->assertNull( $settings->get()['setupCompletedTimestamp'] );
+
+		// Change only account status.
+		$settings->merge(
+			array(
+				'accountStatus' => 'ready',
+			)
+		);
+
+		$this->assertNull( $settings->get()['setupCompletedTimestamp'] );
+
+		// Change only site status.
+		$settings->merge(
+			array(
+				'accountStatus' => '',
+				'siteStatus'    => 'ready',
+			)
+		);
+
+		$this->assertNull( $settings->get()['setupCompletedTimestamp'] );
+
+		// Change both account and site status.
+		$settings->merge(
+			array(
+				'accountStatus' => 'ready',
+				'siteStatus'    => 'ready',
+			)
+		);
+
+		$this->assertTrue( gmdate( 'Ymd' ) === gmdate( 'Ymd', $settings->get()['setupCompletedTimestamp'] ) );
+	}
+
+	public function test_setup_completed_timestamp__existing_setup() {
+		$settings = new Settings( new Options( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) ) );
+		$settings->register();
+
+		remove_all_filters( 'pre_update_option_' . Settings::OPTION );
+
+		// Change both account and site status.
+		$settings->merge(
+			array(
+				'accountStatus' => 'ready',
+				'siteStatus'    => 'ready',
+			)
+		);
+		$settings->register();
+
+		$this->assertNull( $settings->get()['setupCompletedTimestamp'] );
+
+		// Change any AdSense setting.
+		$settings->merge(
+			array(
+				'useSnippet' => false,
+			)
+		);
+
+		$test_date            = (int) gmdate( 'Ymd', strtotime( '-1 month' ) );
+		$setup_completed_date = (int) gmdate( 'Ymd', $settings->get()['setupCompletedTimestamp'] );
+
+		// Test date can be greater than setup completed date if the `setupCompletedTimestamp` was saved on midnight.
+		$this->assertTrue( $test_date >= $setup_completed_date );
 	}
 
 	protected function get_testcase() {

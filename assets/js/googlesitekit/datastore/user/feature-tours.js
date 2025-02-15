@@ -21,20 +21,26 @@
  */
 import compareVersions from 'compare-versions';
 import invariant from 'invariant';
+import { isPlainObject, isNull } from 'lodash';
 
 /**
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	commonActions,
+	createRegistrySelector,
+	combineStores,
+	createRegistryControl,
+} from 'googlesitekit-data';
 import { createFetchStore } from '../../data/create-fetch-store';
+import { CORE_SITE } from '../../datastore/site/constants';
 import { CORE_USER } from './constants';
 import featureTours from '../../../feature-tours';
-import { setItem, getItem } from '../../../googlesitekit/api/cache';
+import { getItem } from '../../../googlesitekit/api/cache';
 import { createValidatedAction } from '../../data/utils';
 
-const { createRegistrySelector, createRegistryControl } = Data;
-const { getRegistry } = Data.commonActions;
+const { getRegistry } = commonActions;
 
 // Feature tour cooldown period is 2 hours
 export const FEATURE_TOUR_COOLDOWN_SECONDS = 60 * 60 * 2;
@@ -42,14 +48,14 @@ export const FEATURE_TOUR_LAST_DISMISSED_AT = 'feature_tour_last_dismissed_at';
 
 // Actions.
 const DISMISS_TOUR = 'DISMISS_TOUR';
+const RECEIVE_CURRENT_TOUR = 'RECEIVE_CURRENT_TOUR';
 const RECEIVE_READY_TOURS = 'RECEIVE_READY_TOURS';
 const RECEIVE_TOURS = 'RECEIVE_TOURS';
 const CHECK_TOUR_REQUIREMENTS = 'CHECK_TOUR_REQUIREMENTS';
+const CHECK_ON_DEMAND_TOUR_REQUIREMENTS = 'CHECK_ON_DEMAND_TOUR_REQUIREMENTS';
 const RECEIVE_LAST_DISMISSED_AT = 'RECEIVE_LAST_DISMISSED_AT';
 
 // Controls.
-const CACHE_LAST_DISMISSED_AT = 'CACHE_LAST_DISMISSED_AT';
-
 const fetchGetDismissedToursStore = createFetchStore( {
 	baseName: 'getDismissedTours',
 	controlCallback: () =>
@@ -76,12 +82,10 @@ const fetchDismissTourStore = createFetchStore( {
 
 const baseInitialState = {
 	lastDismissedAt: undefined,
-	// Array of dismissed tour slugs.
 	dismissedTourSlugs: undefined,
-	// Array of tour objects.
 	tours: featureTours,
-	// Map of [viewContext]: ordered array of tour objects.
-	viewTours: {},
+	currentTour: undefined,
+	shownTour: undefined,
 };
 
 const baseActions = {
@@ -101,9 +105,8 @@ const baseActions = {
 			const { select } = yield getRegistry();
 
 			if ( select( CORE_USER ).isFetchingDismissTour( slug ) ) {
-				const response = select(
-					CORE_USER
-				).getDismissedFeatureTourSlugs();
+				const response =
+					select( CORE_USER ).getDismissedFeatureTourSlugs();
 				return { response, error: undefined };
 			}
 
@@ -113,13 +116,26 @@ const baseActions = {
 				payload: { slug },
 			};
 
-			// Save the timestamp to allow the cooldown
-			yield actions.setLastDismissedAt( Date.now() );
+			// Save the timestamp to allow the cooldown.
+			// The timestamp used here should reflect the actual time the
+			// user interacted with this feature tour, not the reference date.
+			yield actions.setLastDismissedAt( Date.now() ); // eslint-disable-line sitekit/no-direct-date
 
 			// Dispatch a request to persist and receive updated dismissed tours.
 			return yield fetchDismissTourStore.actions.fetchDismissTour( slug );
 		}
 	),
+
+	receiveCurrentTour( tour ) {
+		invariant(
+			isPlainObject( tour ) || isNull( tour ),
+			'tour must be a plain object or null.'
+		);
+		return {
+			payload: { tour },
+			type: RECEIVE_CURRENT_TOUR,
+		};
+	},
 
 	receiveFeatureToursForView( viewTours, { viewContext } = {} ) {
 		invariant( Array.isArray( viewTours ), 'viewTours must be an array.' );
@@ -153,64 +169,140 @@ const baseActions = {
 			invariant( timestamp, 'A timestamp is required.' );
 		},
 		function* ( timestamp ) {
-			yield {
-				type: CACHE_LAST_DISMISSED_AT,
-				payload: { timestamp },
-			};
+			const registry = yield getRegistry();
+
+			registry
+				.dispatch( CORE_SITE )
+				.setCacheItem( FEATURE_TOUR_LAST_DISMISSED_AT, timestamp, {
+					ttl: FEATURE_TOUR_COOLDOWN_SECONDS,
+				} );
+
 			yield {
 				type: RECEIVE_LAST_DISMISSED_AT,
 				payload: { timestamp },
 			};
 		}
 	),
+
+	*triggerTour( tour ) {
+		const { select } = yield getRegistry();
+
+		if ( ! select( CORE_USER ).getCurrentTour() ) {
+			yield baseActions.receiveCurrentTour( tour );
+		}
+	},
+
+	*triggerOnDemandTour( tour ) {
+		const tourQualifies = yield {
+			payload: { tour },
+			type: CHECK_ON_DEMAND_TOUR_REQUIREMENTS,
+		};
+
+		if ( tourQualifies ) {
+			yield baseActions.triggerTour( tour );
+		}
+	},
+
+	*triggerTourForView( viewContext ) {
+		const { select, resolveSelect } = yield getRegistry();
+
+		yield commonActions.await(
+			resolveSelect( CORE_USER ).getLastDismissedAt()
+		);
+
+		if ( select( CORE_USER ).areFeatureToursOnCooldown() ) {
+			return {};
+		}
+
+		const tours = select( CORE_USER ).getAllFeatureTours();
+
+		for ( const tour of tours ) {
+			const tourQualifies = yield {
+				payload: { tour, viewContext },
+				type: CHECK_TOUR_REQUIREMENTS,
+			};
+
+			if ( tourQualifies ) {
+				yield baseActions.triggerTour( tour );
+				return tour;
+			}
+		}
+
+		// Trigger with null here to avoid overriding an on-demand tour.
+		yield baseActions.triggerTour( null );
+		return null;
+	},
 };
 
 const baseControls = {
 	[ CHECK_TOUR_REQUIREMENTS ]: createRegistryControl(
-		( registry ) => async ( { payload } ) => {
-			const { tour, viewContext } = payload;
+		( registry ) =>
+			async ( { payload } ) => {
+				const { tour, viewContext } = payload;
 
-			// Check the view context.
-			if ( ! tour.contexts.includes( viewContext ) ) {
-				return false;
+				// Check the view context.
+				if ( ! tour.contexts.includes( viewContext ) ) {
+					return false;
+				}
+
+				// Only tours with a version after a user's initial Site Kit version should qualify.
+				const initialVersion = await registry
+					.resolveSelect( CORE_USER )
+					.getInitialSiteKitVersion();
+				if ( ! initialVersion ) {
+					return false;
+				} else if (
+					compareVersions.compare(
+						initialVersion,
+						tour.version,
+						'>='
+					)
+				) {
+					return false;
+				}
+
+				// Check if the tour has already been dismissed.
+				// Here we need to first await the underlying selector with the asynchronous resolver.
+				await registry
+					.resolveSelect( CORE_USER )
+					.getDismissedFeatureTourSlugs();
+				if (
+					registry.select( CORE_USER ).isTourDismissed( tour.slug )
+				) {
+					return false;
+				}
+
+				// If the tour has additional requirements, check those as well.
+				if ( tour.checkRequirements ) {
+					return !! ( await tour.checkRequirements( registry ) );
+				}
+
+				return true;
 			}
-
-			// Only tours with a version after a user's initial Site Kit version should qualify.
-			const initialVersion = registry
-				.select( CORE_USER )
-				.getInitialSiteKitVersion();
-			if ( ! initialVersion ) {
-				return false;
-			} else if (
-				compareVersions.compare( initialVersion, tour.version, '>=' )
-			) {
-				return false;
-			}
-
-			// Check if the tour has already been dismissed.
-			// Here we need to first await the underlying selector with the asynchronous resolver.
-			await registry
-				.__experimentalResolveSelect( CORE_USER )
-				.getDismissedFeatureTourSlugs();
-			if ( registry.select( CORE_USER ).isTourDismissed( tour.slug ) ) {
-				return false;
-			}
-
-			// If the tour has additional requirements, check those as well.
-			if ( tour.checkRequirements ) {
-				return !! ( await tour.checkRequirements( registry ) );
-			}
-
-			return true;
-		}
 	),
-	[ CACHE_LAST_DISMISSED_AT ]: async ( { payload } ) => {
-		const { timestamp } = payload;
+	[ CHECK_ON_DEMAND_TOUR_REQUIREMENTS ]: createRegistryControl(
+		( registry ) =>
+			async ( { payload } ) => {
+				const { tour } = payload;
+				// Check if the tour has already been dismissed.
+				// Here we need to first await the underlying selector with the asynchronous resolver.
+				await registry
+					.resolveSelect( CORE_USER )
+					.getDismissedFeatureTourSlugs();
+				if (
+					registry.select( CORE_USER ).isTourDismissed( tour.slug )
+				) {
+					return false;
+				}
 
-		await setItem( FEATURE_TOUR_LAST_DISMISSED_AT, timestamp, {
-			ttl: FEATURE_TOUR_COOLDOWN_SECONDS,
-		} );
-	},
+				// If the tour has additional requirements, check those as well.
+				if ( tour.checkRequirements ) {
+					return !! ( await tour.checkRequirements( registry ) );
+				}
+
+				return true;
+			}
+	),
 };
 
 const baseReducer = ( state, { type, payload } ) => {
@@ -223,7 +315,17 @@ const baseReducer = ( state, { type, payload } ) => {
 			}
 			return {
 				...state,
+				currentTour:
+					state.currentTour?.slug === slug ? null : state.currentTour,
 				dismissedTourSlugs: dismissedTourSlugs.concat( slug ),
+			};
+		}
+
+		case RECEIVE_CURRENT_TOUR: {
+			return {
+				...state,
+				currentTour: payload.tour,
+				shownTour: payload.tour,
 			};
 		}
 
@@ -268,26 +370,8 @@ const baseResolvers = {
 		}
 	},
 
-	*getFeatureToursForView( viewContext ) {
-		const registry = yield getRegistry();
-		const tours = registry.select( CORE_USER ).getAllFeatureTours();
-		const viewTours = [];
-
-		for ( const tour of tours ) {
-			const tourQualifies = yield {
-				payload: { tour, viewContext },
-				type: CHECK_TOUR_REQUIREMENTS,
-			};
-
-			if ( tourQualifies ) {
-				viewTours.push( tour );
-			}
-		}
-		yield actions.receiveFeatureToursForView( viewTours, { viewContext } );
-	},
-
 	*getLastDismissedAt() {
-		const { value: lastDismissedAt } = yield Data.commonActions.await(
+		const { value: lastDismissedAt } = yield commonActions.await(
 			getItem( FEATURE_TOUR_LAST_DISMISSED_AT )
 		);
 
@@ -296,6 +380,30 @@ const baseResolvers = {
 };
 
 const baseSelectors = {
+	/**
+	 * Gets the currently active tour object.
+	 *
+	 * @since 1.79.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(Object|null)} Active tour object.
+	 */
+	getCurrentTour( state ) {
+		return state.currentTour;
+	},
+
+	/**
+	 * Gets the feature tour that has been already shown in the current page view.
+	 *
+	 * @since 1.99.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(Object|undefined)} Shown tour object.
+	 */
+	getShownTour( state ) {
+		return state.shownTour;
+	},
+
 	/**
 	 * Gets the list of dismissed tour slugs.
 	 *
@@ -309,20 +417,6 @@ const baseSelectors = {
 	 */
 	getDismissedFeatureTourSlugs( state ) {
 		return state.dismissedTourSlugs;
-	},
-
-	/**
-	 * Gets a list of tour objects that qualify for the given view context.
-	 *
-	 * @since 1.29.0
-	 *
-	 * @param {Object} state       Data store's state.
-	 * @param {string} viewContext View context.
-	 * @return {(Object[]|undefined)} Array of qualifying tour objects
-	 *                                `undefined` while readiness is being resolved.
-	 */
-	getFeatureToursForView( state, viewContext ) {
-		return state.viewTours[ viewContext ];
 	},
 
 	/**
@@ -350,9 +444,8 @@ const baseSelectors = {
 	 *                               `false` if not dismissed.
 	 */
 	isTourDismissed: createRegistrySelector( ( select ) => ( state, slug ) => {
-		const dismissedTourSlugs = select(
-			CORE_USER
-		).getDismissedFeatureTourSlugs();
+		const dismissedTourSlugs =
+			select( CORE_USER ).getDismissedFeatureTourSlugs();
 
 		if ( undefined === dismissedTourSlugs ) {
 			return undefined;
@@ -400,7 +493,11 @@ const baseSelectors = {
 		const coolDownPeriodMilliseconds = FEATURE_TOUR_COOLDOWN_SECONDS * 1000;
 		const coolDownExpiresAt = lastDismissedAt + coolDownPeriodMilliseconds;
 
-		return Date.now() < coolDownExpiresAt;
+		// When using feature tour cooldowns, we should compare the actual
+		// time with the cooldown time. Comparing the reference date with
+		// the cooldown time expiration would not be accurate (and somewhat
+		// confusing during testing).
+		return Date.now() < coolDownExpiresAt; // eslint-disable-line sitekit/no-direct-date
 	} ),
 };
 
@@ -411,7 +508,7 @@ export const {
 	reducer,
 	resolvers,
 	selectors,
-} = Data.combineStores(
+} = combineStores(
 	{
 		initialState: baseInitialState,
 		actions: baseActions,

@@ -6,7 +6,6 @@ vendor
 !/php-scoper/composer.*
 !/php-scoper/README.md
 /third-party
-/includes/Core/Assets/Manifest.php
 /release
 phpunit.xml
 .idea
@@ -15,6 +14,7 @@ npm-debug.log
 /languages
 /storybook-static
 google-site-kit*.zip
+.phpunit.result.cache
 
 # Editors
 *.esproj

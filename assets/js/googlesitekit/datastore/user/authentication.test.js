@@ -24,7 +24,6 @@ import {
 	createTestRegistry,
 	muteFetch,
 	subscribeUntil,
-	unsubscribeFromAll,
 	untilResolved,
 } from '../../../../../tests/js/utils';
 import { CORE_USER } from './constants';
@@ -37,6 +36,8 @@ describe( 'core/user authentication', () => {
 		unsatisfiedScopes: [],
 		needsReauthentication: true,
 		disconnectedReason: 'test-reason',
+		connectedProxyURL: 'http://example.com/current',
+		previousConnectedProxyURL: 'http://example.com/previous',
 	};
 
 	const authError = {
@@ -50,7 +51,9 @@ describe( 'core/user authentication', () => {
 		},
 	};
 
-	const coreUserDataEndpointRegExp = /^\/google-site-kit\/v1\/core\/user\/data\/authentication/;
+	const coreUserDataEndpointRegExp = new RegExp(
+		'^/google-site-kit/v1/core/user/data/authentication'
+	);
 
 	let registry;
 	let store;
@@ -66,10 +69,6 @@ describe( 'core/user authentication', () => {
 
 	afterAll( () => {
 		API.setUsingCache( true );
-	} );
-
-	afterEach( () => {
-		unsubscribeFromAll( registry );
 	} );
 
 	describe( 'actions', () => {
@@ -233,6 +232,7 @@ describe( 'core/user authentication', () => {
 						'https://www.googleapis.com/auth/ungranted.scope'
 					);
 				expect( hasProvisioningScope ).toEqual( undefined );
+				await untilResolved( registry, CORE_USER ).getAuthentication();
 			} );
 		} );
 
@@ -243,6 +243,8 @@ describe( 'core/user authentication', () => {
 			[ 'getUnsatisfiedScopes', 'unsatisfiedScopes' ],
 			[ 'needsReauthentication', 'needsReauthentication' ],
 			[ 'getDisconnectedReason', 'disconnectedReason' ],
+			[ 'getConnectedProxyURL', 'connectedProxyURL' ],
+			[ 'getPreviousConnectedProxyURL', 'previousConnectedProxyURL' ],
 		] )( '%s', ( selector, property ) => {
 			it( 'uses a resolver to load the authenticated value if not yet set.', async () => {
 				fetchMock.getOnce( coreUserDataEndpointRegExp, {
@@ -293,6 +295,7 @@ describe( 'core/user authentication', () => {
 				expect(
 					registry.select( CORE_USER )[ selector ]()
 				).toBeUndefined();
+				await untilResolved( registry, CORE_USER ).getAuthentication();
 			} );
 		} );
 

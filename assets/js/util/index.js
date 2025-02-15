@@ -19,61 +19,26 @@
 /**
  * External dependencies
  */
-import isFinite from 'lodash/isFinite';
-import unescape from 'lodash/unescape';
+import { unescape } from 'lodash';
 
 /**
  * Internal dependencies
  */
-import { trackEvent } from './tracking';
-export { trackEvent };
+import { trackEvent, trackEventOnce } from './tracking';
+export { trackEvent, trackEventOnce };
 export * from './sanitize';
 export * from './stringify';
-export * from './standalone';
 export * from './storage';
 export * from './i18n';
-export * from './helpers';
 export * from './markdown';
 export * from './convert-time';
-export * from './date-range';
+export * from './dates';
 export * from './chart';
 export * from './urls';
-
-/**
- * Transforms a period string into a number of seconds.
- *
- * @since 1.0.0
- *
- * @param {string} period The period to transform.
- * @return {number} The number of seconds.
- */
-export const getTimeInSeconds = ( period ) => {
-	const minute = 60;
-	const hour = minute * 60;
-	const day = hour * 24;
-	const week = day * 7;
-	const month = day * 30;
-	const year = day * 365;
-	switch ( period ) {
-		case 'minute':
-			return minute;
-
-		case 'hour':
-			return hour;
-
-		case 'day':
-			return day;
-
-		case 'week':
-			return week;
-
-		case 'month':
-			return month;
-
-		case 'year':
-			return year;
-	}
-};
+export * from './is-valid-numeric-id';
+export * from './isnumeric';
+export * from './safely-sort';
+export * from './partition-report';
 
 /**
  * Calculates the change between two values.
@@ -84,59 +49,27 @@ export const getTimeInSeconds = ( period ) => {
  * @param {number} current  The current value.
  * @return {(number|null)} The percent change. Null if the input or output is invalid.
  */
-export const calculateChange = ( previous, current ) => {
+export function calculateChange( previous, current ) {
+	const isZero = ( value ) => value === '0' || value === 0;
+
+	// Prevent null result when both values are legitimately zero.
+	if ( isZero( previous ) && isZero( current ) ) {
+		return 0;
+	}
+
 	// Prevent divide by zero errors.
-	if ( '0' === previous || 0 === previous || isNaN( previous ) ) {
+	if ( isZero( previous ) || Number.isNaN( previous ) ) {
 		return null;
 	}
 
-	const change = ( current - previous ) / previous;
-
 	// Avoid NaN at all costs.
-	if ( isNaN( change ) || ! isFinite( change ) ) {
+	const change = ( current - previous ) / previous;
+	if ( Number.isNaN( change ) || ! Number.isFinite( change ) ) {
 		return null;
 	}
 
 	return change;
-};
-
-/**
- * Gets data for all modules.
- *
- * Because _googlesitekitLegacyData.modules contains both module information (legacy) and
- * API functions (new), we should be using this function and never access
- * _googlesitekitLegacyData.modules directly to access module data.
- *
- * This function should be removed once this object is no longer used to store
- * legacy module data.
- *
- * @since 1.7.0
- *
- * @param {Object} __googlesitekitLegacyData Optional. _googlesitekitLegacyData global; can be replaced for testing.
- * @return {Object} Object with module data, with each module keyed by its slug.
- */
-export const getModulesData = (
-	__googlesitekitLegacyData = global._googlesitekitLegacyData
-) => {
-	const modulesObj = __googlesitekitLegacyData.modules;
-	if ( ! modulesObj ) {
-		return {};
-	}
-
-	return Object.keys( modulesObj ).reduce( ( acc, slug ) => {
-		if ( 'object' !== typeof modulesObj[ slug ] ) {
-			return acc;
-		}
-		if (
-			'undefined' === typeof modulesObj[ slug ].slug ||
-			'undefined' === typeof modulesObj[ slug ].name ||
-			modulesObj[ slug ].slug !== slug
-		) {
-			return acc;
-		}
-		return { ...acc, [ slug ]: modulesObj[ slug ] };
-	}, {} );
-};
+}
 
 /**
  * Verifies whether JSON is valid.

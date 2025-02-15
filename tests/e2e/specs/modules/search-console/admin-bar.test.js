@@ -53,11 +53,14 @@ describe( 'Site Kit admin bar component display', () => {
 						]
 					),
 				} );
-			} else if ( request.url().match( 'google-site-kit/v1/data/' ) ) {
-				request.respond( {
-					status: 200,
-					body: JSON.stringify( mockBatchResponse ),
-				} );
+			} else if (
+				request
+					.url()
+					.match(
+						'google-site-kit/v1/modules/pagespeed-insights/data/pagespeed'
+					)
+			) {
+				request.respond( { status: 200, body: JSON.stringify( {} ) } );
 			} else {
 				request.continue();
 			}
@@ -100,9 +103,12 @@ describe( 'Site Kit admin bar component display', () => {
 			}
 		);
 		// Ensure Analytics CTA is displayed
-		await expect( adminBarApp ).toMatchElement( '.googlesitekit-cta-link', {
-			text: /Set up analytics/i,
-		} );
+		await expect( adminBarApp ).toMatchElement(
+			'.googlesitekit-analytics-cta button',
+			{
+				text: /Set up google analytics/i,
+			}
+		);
 		// More details link
 		await expect( adminBarApp ).toMatchElement( '.googlesitekit-cta-link', {
 			text: /More details/i,
@@ -158,9 +164,12 @@ describe( 'Site Kit admin bar component display', () => {
 			}
 		);
 		// Ensure Analytics CTA is displayed
-		await expect( adminBarApp ).toMatchElement( '.googlesitekit-cta-link', {
-			text: /Set up analytics/i,
-		} );
+		await expect( adminBarApp ).toMatchElement(
+			'.googlesitekit-analytics-cta button',
+			{
+				text: /Set up google analytics/i,
+			}
+		);
 		// More details link
 		await expect( adminBarApp ).toMatchElement( '.googlesitekit-cta-link', {
 			text: /More details/i,
@@ -168,7 +177,7 @@ describe( 'Site Kit admin bar component display', () => {
 		await adminBarApp.dispose();
 	} );
 
-	it( 'links "More details" to the dashboard details view for the current post', async () => {
+	it( 'links "More details" to the entity dashboard view for the current post', async () => {
 		const { searchConsole } = adminBarMockResponses;
 		// Data is requested when the Admin Bar app loads on first hover
 		mockBatchResponse = Object.assign( {}, searchConsole );
@@ -184,9 +193,7 @@ describe( 'Site Kit admin bar component display', () => {
 			),
 		] );
 
-		await expect(
-			page
-		).toMatchElement(
+		await expect( page ).toMatchElement(
 			'#js-googlesitekit-adminbar .googlesitekit-cta-link',
 			{ text: /More details/i, visible: true, timeout: 5000 }
 		);
@@ -200,13 +207,13 @@ describe( 'Site Kit admin bar component display', () => {
 				}
 			),
 			// Waiting for navigation here does not work as expected as this is a JS navigation.
-			page.waitForSelector( '.googlesitekit-page-header__title' ),
+			page.waitForSelector( '.googlesitekit-entity-header' ),
 		] );
 
 		await expect( page ).toMatchElement(
-			'.googlesitekit-page-header__title',
+			'.googlesitekit-entity-header__back',
 			{
-				title: /Detailed Page Stats/i,
+				text: /Back to dashboard/i,
 			}
 		);
 	} );

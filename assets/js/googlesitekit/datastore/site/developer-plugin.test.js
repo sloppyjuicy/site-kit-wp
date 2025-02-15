@@ -23,7 +23,6 @@ import API from 'googlesitekit-api';
 import {
 	createTestRegistry,
 	muteFetch,
-	unsubscribeFromAll,
 	untilResolved,
 } from '../../../../../tests/js/utils';
 import { CORE_SITE } from './constants';
@@ -47,10 +46,6 @@ describe( 'core/site developer plugin state', () => {
 		registry = createTestRegistry();
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	afterAll( () => {
 		API.setUsingCache( true );
 	} );
@@ -59,7 +54,9 @@ describe( 'core/site developer plugin state', () => {
 		it( 'does not require any params', () => {
 			expect( () => {
 				muteFetch(
-					/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/
+					new RegExp(
+						'^/google-site-kit/v1/core/site/data/developer-plugin'
+					)
 				);
 				registry.dispatch( CORE_SITE ).fetchGetDeveloperPluginState();
 			} ).not.toThrow();
@@ -81,9 +78,8 @@ describe( 'core/site developer plugin state', () => {
 						responseDeveloperPluginState
 					);
 
-				const { developerPluginState } = registry.stores[
-					CORE_SITE
-				].store.getState();
+				const { developerPluginState } =
+					registry.stores[ CORE_SITE ].store.getState();
 
 				expect( developerPluginState ).toMatchObject(
 					responseDeveloperPluginState
@@ -96,7 +92,9 @@ describe( 'core/site developer plugin state', () => {
 		describe( 'getDeveloperPluginState', () => {
 			it( 'uses a resolver to make a network request', async () => {
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/,
+					new RegExp(
+						'^/google-site-kit/v1/core/site/data/developer-plugin'
+					),
 					{ body: responseDeveloperPluginState, status: 200 }
 				);
 
@@ -150,7 +148,9 @@ describe( 'core/site developer plugin state', () => {
 					data: { status: 500 },
 				};
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/,
+					new RegExp(
+						'^/google-site-kit/v1/core/site/data/developer-plugin'
+					),
 					{ body: response, status: 500 }
 				);
 

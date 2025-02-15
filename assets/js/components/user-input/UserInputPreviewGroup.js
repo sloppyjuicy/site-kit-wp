@@ -20,68 +20,353 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
+import classnames from 'classnames';
 
 /**
  * WordPress dependencies
  */
-import { __, sprintf } from '@wordpress/i18n';
+import { Fragment, useEffect, useCallback, useRef } from '@wordpress/element';
+import { usePrevious } from '@wordpress/compose';
+import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Button from '../Button';
+import { Button, SpinnerButton } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { CORE_UI } from '../../googlesitekit/datastore/ui/constants';
+import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
+import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import { trackEvent } from '../../util';
+import { getErrorMessageForAnswer, hasErrorForAnswer } from './util/validation';
+import useViewContext from '../../hooks/useViewContext';
+import {
+	FORM_USER_INPUT_QUESTION_SNAPSHOT,
+	USER_INPUT_CURRENTLY_EDITING_KEY,
+	USER_INPUT_MAX_ANSWERS,
+	USER_INPUT_QUESTIONS_PURPOSE,
+	getUserInputAnswersDescription,
+} from './util/constants';
+import ErrorNotice from '../ErrorNotice';
+import Link from '../Link';
+import LoadingWrapper from '../LoadingWrapper';
+import UserInputSelectOptions from './UserInputSelectOptions';
+import UserInputQuestionAuthor from './UserInputQuestionAuthor';
+import ChevronDownIcon from '../../../svg/icons/chevron-down.svg';
+import { useFeature } from '../../hooks/useFeature';
+import { CORE_FORMS } from '../../googlesitekit/datastore/forms/constants';
 
 export default function UserInputPreviewGroup( {
-	questionNumber,
+	slug,
 	title,
-	edit,
+	subtitle,
 	values,
-	options,
+	options = {},
+	loading = false,
+	settingsView = false,
+	onChange,
 } ) {
-	const trim = ( value ) => value.trim();
-	const notEmpty = ( value ) => value.length > 0;
+	const isConversionReportingEnabled = useFeature( 'conversionReporting' );
+	const viewContext = useViewContext();
+	const isNavigating = useSelect( ( select ) =>
+		select( CORE_LOCATION ).isNavigating()
+	);
+	const currentlyEditingSlug = useSelect( ( select ) =>
+		select( CORE_UI ).getValue( USER_INPUT_CURRENTLY_EDITING_KEY )
+	);
+	const hasSettingChanged = useSelect( ( select ) =>
+		select( CORE_USER ).hasUserInputSettingChanged( slug )
+	);
+	const isSavingSettings = useSelect( ( select ) => {
+		const userInputSettings = select( CORE_USER ).getUserInputSettings();
 
-	const sprintfTemplate =
-		/* translators: %s: other option */
-		questionNumber < 5 ? __( 'Other: %s', 'google-site-kit' ) : '%s';
+		return select( CORE_USER ).isSavingUserInputSettings(
+			userInputSettings
+		);
+	} );
+	const saveSettingsError = useSelect( ( select ) =>
+		select( CORE_USER ).getErrorForAction( 'saveUserInputSettings', [] )
+	);
+	const savedPurposeAnswer = useSelect( ( select ) =>
+		select( CORE_FORMS ).getValue(
+			FORM_USER_INPUT_QUESTION_SNAPSHOT,
+			USER_INPUT_QUESTIONS_PURPOSE
+		)
+	);
+	const previousPurposeAnswer = usePrevious( savedPurposeAnswer );
+
+	useEffect( () => {
+		// If user purpose is opened currently saved value was snapshot
+		// and it will differ from previous value. Once modal is closed
+		// the edit button will be toggled, and snapshotted value will be undefined
+		// while previously it had value, that will mark that modal is closed and we should
+		// return focus to the edit button.
+		if (
+			isConversionReportingEnabled &&
+			slug === USER_INPUT_QUESTIONS_PURPOSE &&
+			previousPurposeAnswer !== savedPurposeAnswer &&
+			savedPurposeAnswer === undefined
+		) {
+			setTimeout( () => {
+				editButtonRef.current?.focus?.();
+			}, 100 );
+		}
+	}, [
+		isConversionReportingEnabled,
+		savedPurposeAnswer,
+		previousPurposeAnswer,
+		slug,
+	] );
+
+	const { setValues } = useDispatch( CORE_UI );
+	const { saveUserInputSettings, resetUserInputSettings } =
+		useDispatch( CORE_USER );
+
+	const isEditing = currentlyEditingSlug === slug;
+
+	const isScreenLoading = isSavingSettings || isNavigating;
+
+	const gaEventCategory = `${ viewContext }_kmw`;
+
+	const toggleEditMode = useCallback( () => {
+		if ( isEditing ) {
+			setValues( {
+				[ USER_INPUT_CURRENTLY_EDITING_KEY ]: undefined,
+			} );
+			editButtonRef.current?.focus?.();
+		} else {
+			trackEvent( gaEventCategory, 'question_edit', slug );
+			setValues( {
+				[ USER_INPUT_CURRENTLY_EDITING_KEY ]: slug,
+			} );
+		}
+	}, [ gaEventCategory, isEditing, setValues, slug ] );
+
+	const errorMessage = getErrorMessageForAnswer(
+		values,
+		USER_INPUT_MAX_ANSWERS[ slug ]
+	);
+
+	const answerHasError = hasErrorForAnswer( values );
+
+	const editButtonRef = useRef();
+
+	const submitChanges = useCallback( async () => {
+		if ( answerHasError ) {
+			return;
+		}
+
+		if (
+			USER_INPUT_QUESTIONS_PURPOSE === slug &&
+			isConversionReportingEnabled &&
+			onChange
+		) {
+			onChange();
+		} else {
+			const response = await saveUserInputSettings();
+
+			if ( ! response.error ) {
+				trackEvent( gaEventCategory, 'question_update', slug );
+				toggleEditMode();
+			}
+		}
+	}, [
+		answerHasError,
+		gaEventCategory,
+		saveUserInputSettings,
+		slug,
+		toggleEditMode,
+		onChange,
+		isConversionReportingEnabled,
+	] );
+
+	const handleOnEditClick = useCallback( async () => {
+		if ( settingsView ) {
+			if (
+				isScreenLoading ||
+				( !! currentlyEditingSlug && ! isEditing )
+			) {
+				return;
+			}
+
+			// Do not preserve changes if preview group is collapsed with individual CTAs.
+			if ( isEditing ) {
+				await resetUserInputSettings();
+			}
+		}
+
+		toggleEditMode();
+	}, [
+		settingsView,
+		isScreenLoading,
+		currentlyEditingSlug,
+		isEditing,
+		resetUserInputSettings,
+		toggleEditMode,
+	] );
+
+	const handleOnCancelClick = useCallback( async () => {
+		if ( isScreenLoading ) {
+			return;
+		}
+
+		await resetUserInputSettings();
+		toggleEditMode();
+	}, [ isScreenLoading, resetUserInputSettings, toggleEditMode ] );
+
+	const Subtitle = typeof subtitle === 'function' ? subtitle : undefined;
+
+	const {
+		USER_INPUT_ANSWERS_PURPOSE: USER_INPUT_ANSWERS_PURPOSE_DESCRIPTIONS,
+	} = getUserInputAnswersDescription();
 
 	return (
-		<div className="googlesitekit-user-input__preview-group">
-			<div className="googlesitekit-user-input__preview-group-title">
-				<p>
-					{ questionNumber } - { title }
-				</p>
-				<Button text onClick={ edit }>
-					{ __( 'Edit', 'google-site-kit' ) }
-				</Button>
+		<div
+			className={ classnames( 'googlesitekit-user-input__preview-group', {
+				'googlesitekit-user-input__preview-group--editing': isEditing,
+				'googlesitekit-user-input__preview-group--individual-cta':
+					settingsView,
+			} ) }
+		>
+			<div
+				className={ classnames(
+					'googlesitekit-user-input__preview-group-title',
+					{
+						'googlesitekit-user-input__preview-group-title-with-subtitle':
+							Subtitle || subtitle,
+					}
+				) }
+			>
+				<LoadingWrapper loading={ loading } width="340px" height="21px">
+					<p>{ title }</p>
+				</LoadingWrapper>
+				<LoadingWrapper
+					loading={ loading }
+					className="googlesitekit-margin-left-auto"
+					width="60px"
+					height="26px"
+				>
+					<Link
+						secondary
+						onClick={ handleOnEditClick }
+						ref={ editButtonRef }
+						disabled={
+							isScreenLoading ||
+							( !! currentlyEditingSlug && ! isEditing )
+						}
+						linkButton
+						trailingIcon={
+							<ChevronDownIcon width={ 20 } height={ 20 } />
+						}
+					>
+						{ isEditing && __( 'Close', 'google-site-kit' ) }
+						{ ! isEditing && __( 'Edit', 'google-site-kit' ) }
+					</Link>
+				</LoadingWrapper>
 			</div>
 
-			<div className="googlesitekit-user-input__preview-answers">
-				{ values
-					.map( trim )
-					.filter( notEmpty )
-					.map( ( value ) => (
-						<div
-							key={ value }
-							className="googlesitekit-user-input__preview-answer"
-						>
-							{ options[ value ] ||
-								sprintf( sprintfTemplate, value ) }
+			<LoadingWrapper>
+				<div className="googlesitekit-user-input__preview-group-subtitle">
+					{ Subtitle && (
+						<div className="googlesitekit-user-input__preview-group-subtitle-component">
+							<Subtitle />
 						</div>
-					) ) }
-			</div>
+					) }
+					{ ! Subtitle && <p>{ subtitle }</p> }
+				</div>
+			</LoadingWrapper>
+
+			{ ! isEditing && (
+				<div className="googlesitekit-user-input__preview-answers">
+					<LoadingWrapper
+						loading={ loading }
+						width="340px"
+						height="36px"
+					>
+						{ errorMessage && (
+							<p className="googlesitekit-error-text">
+								{ errorMessage }
+							</p>
+						) }
+
+						{ ! errorMessage &&
+							values.map( ( value ) => (
+								<div
+									key={ value }
+									className="googlesitekit-user-input__preview-answer"
+								>
+									{ options[ value ] }
+								</div>
+							) ) }
+					</LoadingWrapper>
+				</div>
+			) }
+
+			{ isEditing && (
+				<Fragment>
+					<UserInputSelectOptions
+						slug={ slug }
+						max={ USER_INPUT_MAX_ANSWERS[ slug ] }
+						options={ options }
+						alignLeftOptions
+						descriptions={ USER_INPUT_ANSWERS_PURPOSE_DESCRIPTIONS }
+					/>
+					{ errorMessage && (
+						<p className="googlesitekit-error-text">
+							{ errorMessage }
+						</p>
+					) }
+					{ settingsView && (
+						<Fragment>
+							<UserInputQuestionAuthor slug={ slug } />
+
+							{ saveSettingsError && (
+								<ErrorNotice error={ saveSettingsError } />
+							) }
+
+							<div className="googlesitekit-user-input__preview-actions">
+								<SpinnerButton
+									disabled={ answerHasError }
+									onClick={
+										hasSettingChanged
+											? submitChanges
+											: toggleEditMode
+									}
+									isSaving={ isScreenLoading }
+								>
+									{ hasSettingChanged || isSavingSettings
+										? __(
+												'Apply changes',
+												'google-site-kit'
+										  )
+										: __( 'Save', 'google-site-kit' ) }
+								</SpinnerButton>
+								<Button
+									tertiary
+									disabled={ isScreenLoading }
+									onClick={ handleOnCancelClick }
+								>
+									{ __( 'Cancel', 'google-site-kit' ) }
+								</Button>
+							</div>
+						</Fragment>
+					) }
+				</Fragment>
+			) }
 		</div>
 	);
 }
 
 UserInputPreviewGroup.propTypes = {
-	questionNumber: PropTypes.number.isRequired,
+	slug: PropTypes.string.isRequired,
 	title: PropTypes.string.isRequired,
-	edit: PropTypes.func.isRequired,
+	subtitle: PropTypes.oneOfType( [
+		PropTypes.string,
+		PropTypes.elementType,
+	] ),
 	values: PropTypes.arrayOf( PropTypes.string ).isRequired,
 	options: PropTypes.shape( {} ),
-};
-
-UserInputPreviewGroup.defaultProps = {
-	options: {},
+	loading: PropTypes.bool,
+	settingsView: PropTypes.bool,
+	onChange: PropTypes.func,
 };

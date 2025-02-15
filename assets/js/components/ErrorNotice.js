@@ -22,29 +22,84 @@
 import PropTypes from 'prop-types';
 
 /**
+ * WordPress dependencies
+ */
+import { Fragment, useCallback } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
+
+/**
  * Internal dependencies
  */
-import { isPermissionScopeError } from '../util/errors';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { Button } from 'googlesitekit-components';
+import { isPermissionScopeError, isErrorRetryable } from '../util/errors';
 import ErrorText from './ErrorText';
 
 export default function ErrorNotice( {
 	error,
-	shouldDisplayError = () => true,
+	hasButton = false,
+	storeName,
+	message = error.message,
+	noPrefix = false,
+	skipRetryMessage,
+	Icon,
 } ) {
-	// Do not display if no error, or if the error is for missing scopes.
-	if (
-		! error ||
-		isPermissionScopeError( error ) ||
-		! shouldDisplayError( error )
-	) {
+	const dispatch = useDispatch();
+
+	const selectorData = useSelect( ( select ) => {
+		if ( ! storeName ) {
+			return null;
+		}
+
+		return select( storeName ).getSelectorDataForError( error );
+	} );
+
+	const handleRetry = useCallback( () => {
+		dispatch( selectorData.storeName ).invalidateResolution(
+			selectorData.name,
+			selectorData.args
+		);
+	}, [ dispatch, selectorData ] );
+
+	// Do not display if there is no error, or if the error is for missing scopes.
+	if ( ! error || isPermissionScopeError( error ) ) {
 		return null;
 	}
 
+	const shouldDisplayRetry =
+		hasButton && isErrorRetryable( error, selectorData );
+
+	// Append "Try again" messaging if no retry button is present.
+	if ( ! hasButton && ! skipRetryMessage ) {
+		message = sprintf(
+			/* translators: %1$s: Error message from Google API. */
+			__( '%1$s%2$s Please try again.', 'google-site-kit' ),
+			message,
+			message.endsWith( '.' ) ? '' : '.'
+		);
+	}
+
 	return (
-		<ErrorText
-			message={ error.message }
-			reconnectURL={ error.data?.reconnectURL }
-		/>
+		<Fragment>
+			{ Icon && (
+				<div className="googlesitekit-error-notice__icon">
+					<Icon width="24" height="24" />
+				</div>
+			) }
+			<ErrorText
+				message={ message }
+				reconnectURL={ error.data?.reconnectURL }
+				noPrefix={ noPrefix }
+			/>
+			{ shouldDisplayRetry && (
+				<Button
+					className="googlesitekit-error-notice__retry-button"
+					onClick={ handleRetry }
+				>
+					{ __( 'Retry', 'google-site-kit' ) }
+				</Button>
+			) }
+		</Fragment>
 	);
 }
 
@@ -52,5 +107,10 @@ ErrorNotice.propTypes = {
 	error: PropTypes.shape( {
 		message: PropTypes.string,
 	} ),
-	shouldDisplayError: PropTypes.func,
+	hasButton: PropTypes.bool,
+	storeName: PropTypes.string,
+	message: PropTypes.string,
+	noPrefix: PropTypes.bool,
+	skipRetryMessage: PropTypes.bool,
+	Icon: PropTypes.elementType,
 };

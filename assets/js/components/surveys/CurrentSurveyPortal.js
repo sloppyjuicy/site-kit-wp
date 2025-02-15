@@ -19,22 +19,21 @@
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import CurrentSurvey from './CurrentSurvey';
 import Portal from '../Portal';
-const { useSelect } = Data;
 
-const CurrentSurveyPortal = () => {
-	const usingProxy = useSelect( ( select ) =>
-		select( CORE_SITE ).isUsingProxy()
-	);
+export default function CurrentSurveyPortal() {
 	const currentSurvey = useSelect( ( select ) =>
-		select( CORE_USER ).getCurrentSurvey()
+		select( CORE_SITE ).isUsingProxy() &&
+		select( CORE_USER ).areSurveysOnCooldown() === false
+			? select( CORE_USER ).getCurrentSurvey()
+			: null
 	);
 
-	if ( ! usingProxy || ! currentSurvey ) {
+	if ( ! currentSurvey ) {
 		return null;
 	}
 
@@ -43,6 +42,4 @@ const CurrentSurveyPortal = () => {
 			<CurrentSurvey />
 		</Portal>
 	);
-};
-
-export default CurrentSurveyPortal;
+}

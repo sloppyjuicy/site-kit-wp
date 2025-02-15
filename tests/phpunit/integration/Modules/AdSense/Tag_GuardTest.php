@@ -36,8 +36,8 @@ class Tag_GuardTest extends TestCase {
 	 */
 	private $guard;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		update_option(
 			Settings::OPTION,
@@ -64,12 +64,4 @@ class Tag_GuardTest extends TestCase {
 		$this->settings->merge( array( 'clientID' => '' ) );
 		$this->assertFalse( $this->guard->can_activate(), 'Should return FALSE when clientID is empty.' );
 	}
-
-	public function test_cant_activate_on_404() {
-		$this->go_to( '/?p=123456789' );
-
-		$this->assertQueryTrue( 'is_404' );
-		$this->assertFalse( $this->guard->can_activate(), 'Should return FALSE when the current page doesnt exist (is_404).' );
-	}
-
 }

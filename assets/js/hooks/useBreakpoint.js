@@ -16,10 +16,12 @@
  * limitations under the License.
  */
 
-/**
- * External dependencies
- */
-import { useWindowWidth } from '@react-hook/window-size/throttled';
+import { useWindowWidth } from './useWindowSize';
+
+export const BREAKPOINT_XLARGE = 'xlarge';
+export const BREAKPOINT_DESKTOP = 'desktop';
+export const BREAKPOINT_TABLET = 'tablet';
+export const BREAKPOINT_SMALL = 'small';
 
 /**
  * Retrieves the current breakpoint.
@@ -28,22 +30,20 @@ import { useWindowWidth } from '@react-hook/window-size/throttled';
  *
  * @return {string} The current breakpoint according to the window size.
  */
-export const useBreakpoint = () => {
+export function useBreakpoint() {
 	const onlyWidth = useWindowWidth();
 
 	if ( onlyWidth > 1280 ) {
-		return 'xlarge';
+		return BREAKPOINT_XLARGE;
 	}
 
 	if ( onlyWidth > 960 ) {
-		return 'desktop';
+		return BREAKPOINT_DESKTOP;
 	}
 
 	if ( onlyWidth > 600 ) {
-		return 'tablet';
+		return BREAKPOINT_TABLET;
 	}
 
-	return 'small';
-};
-
-export default useBreakpoint;
+	return BREAKPOINT_SMALL;
+}

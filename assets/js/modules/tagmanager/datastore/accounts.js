@@ -25,15 +25,17 @@ import invariant from 'invariant';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	createRegistrySelector,
+	commonActions,
+	combineStores,
+} from 'googlesitekit-data';
 import { createValidatedAction } from '../../../googlesitekit/data/utils';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
 import { MODULES_TAGMANAGER, CONTAINER_CREATE } from './constants';
-import { actions as containerActions } from './containers';
 import { isValidAccountSelection } from '../util/validation';
 import { createFetchStore } from '../../../googlesitekit/data/create-fetch-store';
-import { ACCOUNT_CREATE } from '../../analytics/datastore/constants';
-const { createRegistrySelector } = Data;
+import { ACCOUNT_CREATE } from '../../analytics-4/datastore/constants';
 
 // Actions
 const RESET_ACCOUNTS = 'RESET_ACCOUNTS';
@@ -66,7 +68,7 @@ export const baseActions = {
 	 * @private
 	 */
 	*resetAccounts() {
-		const { dispatch } = yield Data.commonActions.getRegistry();
+		const { dispatch } = yield commonActions.getRegistry();
 
 		yield {
 			payload: {},
@@ -94,18 +96,21 @@ export const baseActions = {
 			);
 		},
 		function* ( accountID ) {
-			const { select, dispatch } = yield Data.commonActions.getRegistry();
+			const { dispatch, select, resolveSelect } =
+				yield commonActions.getRegistry();
 
 			// Do nothing if the accountID to select is the same as the current.
 			if ( accountID === select( MODULES_TAGMANAGER ).getAccountID() ) {
 				return;
 			}
 
-			dispatch( MODULES_TAGMANAGER ).setAccountID( accountID );
-			dispatch( MODULES_TAGMANAGER ).setContainerID( '' );
-			dispatch( MODULES_TAGMANAGER ).setInternalContainerID( '' );
-			dispatch( MODULES_TAGMANAGER ).setAMPContainerID( '' );
-			dispatch( MODULES_TAGMANAGER ).setInternalAMPContainerID( '' );
+			dispatch( MODULES_TAGMANAGER ).setSettings( {
+				accountID,
+				containerID: '',
+				internalContainerID: '',
+				ampContainerID: '',
+				internalAMPContainerID: '',
+			} );
 
 			if (
 				ACCOUNT_CREATE === accountID ||
@@ -114,51 +119,56 @@ export const baseActions = {
 				return;
 			}
 
-			// Containers may not be loaded yet for this account,
-			// and no selections are done in the getContainers resolver, so we wait here.
-			// This will not guarantee that containers exist, as an account may also have no containers
-			// it will simply wait for `getContainers` to be resolved for this account ID.
-			yield containerActions.waitForContainers( accountID );
 			// Trigger cascading selections.
 			const { isAMP, isSecondaryAMP } = select( CORE_SITE );
 			if ( ! isAMP() || isSecondaryAMP() ) {
-				const webContainers = select(
-					MODULES_TAGMANAGER
-				).getWebContainers( accountID );
-				const webContainer = webContainers[ 0 ] || {
-					// eslint-disable-next-line sitekit/acronym-case
-					publicId: CONTAINER_CREATE,
-					// eslint-disable-next-line sitekit/acronym-case
-					containerId: '',
-				};
-				dispatch( MODULES_TAGMANAGER ).setContainerID(
-					// eslint-disable-next-line sitekit/acronym-case
-					webContainer.publicId
+				const webContainers = yield commonActions.await(
+					resolveSelect( MODULES_TAGMANAGER ).getWebContainers(
+						accountID
+					)
 				);
-				dispatch( MODULES_TAGMANAGER ).setInternalContainerID(
-					// eslint-disable-next-line sitekit/acronym-case
-					webContainer.containerId
-				);
+
+				if ( ! webContainers.length ) {
+					dispatch( MODULES_TAGMANAGER ).setContainerID(
+						CONTAINER_CREATE
+					);
+					dispatch( MODULES_TAGMANAGER ).setInternalContainerID( '' );
+				} else if ( webContainers.length === 1 ) {
+					dispatch( MODULES_TAGMANAGER ).setContainerID(
+						// eslint-disable-next-line sitekit/acronym-case
+						webContainers[ 0 ].publicId
+					);
+					dispatch( MODULES_TAGMANAGER ).setInternalContainerID(
+						// eslint-disable-next-line sitekit/acronym-case
+						webContainers[ 0 ].containerId
+					);
+				}
 			}
 
 			if ( isAMP() ) {
-				const ampContainers = select(
-					MODULES_TAGMANAGER
-				).getAMPContainers( accountID );
-				const ampContainer = ampContainers[ 0 ] || {
-					// eslint-disable-next-line sitekit/acronym-case
-					publicId: CONTAINER_CREATE,
-					// eslint-disable-next-line sitekit/acronym-case
-					containerId: '',
-				};
-				dispatch( MODULES_TAGMANAGER ).setAMPContainerID(
-					// eslint-disable-next-line sitekit/acronym-case
-					ampContainer.publicId
+				const ampContainers = yield commonActions.await(
+					resolveSelect( MODULES_TAGMANAGER ).getAMPContainers(
+						accountID
+					)
 				);
-				dispatch( MODULES_TAGMANAGER ).setInternalAMPContainerID(
-					// eslint-disable-next-line sitekit/acronym-case
-					ampContainer.containerId
-				);
+
+				if ( ! ampContainers.length ) {
+					dispatch( MODULES_TAGMANAGER ).setAMPContainerID(
+						CONTAINER_CREATE
+					);
+					dispatch( MODULES_TAGMANAGER ).setInternalAMPContainerID(
+						''
+					);
+				} else if ( ampContainers.length === 1 ) {
+					dispatch( MODULES_TAGMANAGER ).setAMPContainerID(
+						// eslint-disable-next-line sitekit/acronym-case
+						ampContainers[ 0 ].publicId
+					);
+					dispatch( MODULES_TAGMANAGER ).setInternalAMPContainerID(
+						// eslint-disable-next-line sitekit/acronym-case
+						ampContainers[ 0 ].containerId
+					);
+				}
 			}
 		}
 	),
@@ -189,18 +199,17 @@ export const baseReducer = ( state, { type } ) => {
 
 export const baseResolvers = {
 	*getAccounts() {
-		const { select, dispatch } = yield Data.commonActions.getRegistry();
+		const { select, dispatch } = yield commonActions.getRegistry();
 		let accounts = select( MODULES_TAGMANAGER ).getAccounts();
 
 		// Only fetch accounts if they have not been received yet.
 		if ( ! accounts ) {
-			( {
-				response: accounts,
-			} = yield fetchGetAccountsStore.actions.fetchGetAccounts() );
+			( { response: accounts } =
+				yield fetchGetAccountsStore.actions.fetchGetAccounts() );
 		}
 
 		if (
-			accounts?.length &&
+			accounts?.length === 1 &&
 			! select( MODULES_TAGMANAGER ).getAccountID()
 		) {
 			dispatch( MODULES_TAGMANAGER ).selectAccount(
@@ -239,7 +248,7 @@ export const baseSelectors = {
 	} ),
 };
 
-const store = Data.combineStores( fetchGetAccountsStore, {
+const store = combineStores( fetchGetAccountsStore, {
 	initialState: baseInitialState,
 	actions: baseActions,
 	reducer: baseReducer,

@@ -21,21 +21,24 @@
  */
 import { withWidgetComponentProps } from '../../googlesitekit/widgets/util';
 import {
+	setupSearchConsoleAnalytics4ZeroData,
+	setupSearchConsoleGatheringData,
 	setupSearchConsoleMockReports,
 	widgetDecorators,
-} from './common.stories';
+} from './common-GA4.stories';
 import AdminBarImpressions from './AdminBarImpressions';
 import WithRegistrySetup from '../../../../tests/js/WithRegistrySetup';
 
-const WidgetWithComponentProps = withWidgetComponentProps( 'widget-slug' )(
-	AdminBarImpressions
-);
+const WidgetWithComponentProps =
+	withWidgetComponentProps( 'widget-slug' )( AdminBarImpressions );
 
-const Template = ( { setupRegistry = () => {}, ...args } ) => (
-	<WithRegistrySetup func={ setupRegistry }>
-		<WidgetWithComponentProps { ...args } />
-	</WithRegistrySetup>
-);
+function Template( { setupRegistry = () => {}, ...args } ) {
+	return (
+		<WithRegistrySetup func={ setupRegistry }>
+			<WidgetWithComponentProps { ...args } />
+		</WithRegistrySetup>
+	);
+}
 
 export const Ready = Template.bind( {} );
 Ready.storyName = 'Ready';
@@ -43,8 +46,17 @@ Ready.args = {
 	setupRegistry: setupSearchConsoleMockReports,
 };
 
-export const DataUnavailable = Template.bind( {} );
-DataUnavailable.storyName = 'Data Unavailable';
+export const GatheringData = Template.bind( {} );
+GatheringData.storyName = 'Gathering Data';
+GatheringData.args = {
+	setupRegistry: setupSearchConsoleGatheringData,
+};
+
+export const ZeroData = Template.bind( {} );
+ZeroData.storyName = 'Zero Data';
+ZeroData.args = {
+	setupRegistry: setupSearchConsoleAnalytics4ZeroData,
+};
 
 export default {
 	title: 'Views/AdminBarApp/AdminBarImpressions',

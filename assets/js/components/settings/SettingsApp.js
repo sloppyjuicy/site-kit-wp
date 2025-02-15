@@ -19,25 +19,26 @@
 /**
  * External dependencies
  */
-import Tab from '@material/react-tab';
-import TabBar from '@material/react-tab-bar';
 import { withRouter, Link, useLocation } from 'react-router-dom';
 
 /**
  * WordPress dependencies
  */
-import { Fragment } from '@wordpress/element';
+import { Fragment, useCallback } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
+import { Tab, TabBar } from 'googlesitekit-components';
 import Header from '../Header';
 import PageHeader from '../PageHeader';
 import Layout from '../layout/Layout';
 import SettingsModules from './SettingsModules';
 import { Cell, Grid, Row } from '../../material-components';
 import HelpMenu from '../help/HelpMenu';
+import { trackEvent } from '../../util/tracking';
+import useViewContext from '../../hooks/useViewContext';
 
 function SettingsApp() {
 	const location = useLocation();
@@ -46,6 +47,12 @@ function SettingsApp() {
 	const shouldReplaceHistory = ( path ) => false && basePath === path;
 	const [ , basePath ] = location.pathname.split( '/' );
 	const activeTab = SettingsApp.basePathToTabIndex[ basePath ];
+
+	const viewContext = useViewContext();
+
+	const handleTabChange = useCallback( () => {
+		trackEvent( viewContext, 'tab_select', basePath );
+	}, [ basePath, viewContext ] );
 
 	return (
 		<Fragment>
@@ -62,8 +69,12 @@ function SettingsApp() {
 							/>
 						</Cell>
 						<Cell size={ 12 }>
-							<Layout>
-								<TabBar activeIndex={ activeTab }>
+							<Layout transparent rounded>
+								<TabBar
+									activeIndex={ activeTab }
+									className="googlesitekit-tab-bar__settings"
+									handleActiveIndexUpdate={ handleTabChange }
+								>
 									<Tab
 										tag={ Link }
 										to="/connected-services"

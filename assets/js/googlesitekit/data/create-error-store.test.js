@@ -24,6 +24,7 @@ import { createRegistry } from '@wordpress/data';
 /**
  * Internal dependencies
  */
+import { combineStores } from 'googlesitekit-data';
 import { createErrorStore, generateErrorKey } from './create-error-store';
 
 const TEST_STORE = 'test/some-data';
@@ -55,7 +56,7 @@ describe( 'createErrorStore store', () => {
 	beforeEach( () => {
 		registry = createRegistry();
 
-		storeDefinition = createErrorStore();
+		storeDefinition = createErrorStore( TEST_STORE );
 		registry.registerStore( TEST_STORE, storeDefinition );
 		dispatch = registry.dispatch( TEST_STORE );
 		store = registry.stores[ TEST_STORE ].store;
@@ -66,12 +67,32 @@ describe( 'createErrorStore store', () => {
 	const baseName = 'getFoo';
 	const args = [ 'bar', 'baz' ];
 
+	describe( 'createErrorStore', () => {
+		it( 'requires a storeName argument', () => {
+			expect( () => {
+				createErrorStore();
+			} ).toThrow( 'storeName must be defined.' );
+		} );
+
+		it( 'does not error when storeName is provided', () => {
+			expect( () => {
+				createErrorStore( TEST_STORE );
+			} ).not.toThrow();
+		} );
+	} );
+
 	describe( 'actions', () => {
 		describe( 'receiveError', () => {
 			it( 'requires the error param', () => {
 				expect( () => {
 					dispatch.receiveError();
 				} ).toThrow( 'error is required.' );
+			} );
+
+			it( 'requires the baseName param', () => {
+				expect( () => {
+					dispatch.receiveError( errorNotFound );
+				} ).toThrow( 'baseName is required.' );
 			} );
 
 			it( 'receives and sets value for an error with `baseName` only', () => {
@@ -92,11 +113,29 @@ describe( 'createErrorStore store', () => {
 		} );
 
 		describe( 'clearError', () => {
-			it( 'does not clear any error when called without any arguments', () => {
+			it( 'requires the baseName param', () => {
+				dispatch.receiveError( errorForbidden, baseName, args );
+
+				expect( () => {
+					dispatch.clearError();
+				} ).toThrow( 'baseName is required.' );
+			} );
+
+			it( 'requires the args param to be an array', () => {
+				dispatch.receiveError( errorForbidden, baseName, args );
+
+				expect( () => {
+					dispatch.clearError( baseName, null );
+				} ).toThrow( 'args must be an array.' );
+			} );
+
+			it( 'does not clear the error when called without baseName param', () => {
 				dispatch.receiveError( errorForbidden, baseName, args );
 				const errorsBefore = store.getState().errors;
 
-				dispatch.clearError();
+				expect( () => {
+					dispatch.clearError();
+				} ).toThrow();
 
 				expect( store.getState().errors ).toEqual( errorsBefore );
 			} );
@@ -121,7 +160,7 @@ describe( 'createErrorStore store', () => {
 
 		describe( 'clearErrors', () => {
 			it( 'clears all received errors when called with no arguments', () => {
-				dispatch.receiveError( errorNotFound );
+				dispatch.receiveError( errorNotFound, baseName );
 				dispatch.receiveError( errorForbidden, baseName, [] );
 				dispatch.receiveError( errorForbidden, baseName, args );
 
@@ -134,14 +173,13 @@ describe( 'createErrorStore store', () => {
 			} );
 
 			it( 'clears all received errors for a given `baseName`', () => {
-				dispatch.receiveError( errorNotFound );
+				dispatch.receiveError( errorNotFound, baseName );
 				dispatch.receiveError( errorForbidden, baseName, [] );
 				dispatch.receiveError( errorForbidden, baseName, args );
 				dispatch.receiveError( errorNotFound, 'otherBaseName', args );
 
 				dispatch.clearErrors( baseName );
 
-				expect( store.getState().error ).toEqual( errorNotFound );
 				expect( store.getState().errors ).toHaveProperty(
 					generateErrorKey( 'otherBaseName', args ),
 					errorNotFound
@@ -156,65 +194,75 @@ describe( 'createErrorStore store', () => {
 	} );
 
 	describe( 'selectors', () => {
-		describe.each( [ 'getErrorForSelector', 'getErrorForAction' ] )(
-			'%s',
-			( selectorName ) => {
-				const baseNameParam =
-					selectorName === 'getErrorForSelector'
-						? 'selectorName'
-						: 'actionName';
-
-				it( `requires a \`${ baseNameParam }\` param`, () => {
-					expect( () => {
-						select[ selectorName ]();
-					} ).toThrow( `${ baseNameParam } is required.` );
-				} );
-
-				it( `returns \`undefined\` when no has been received error for the given \`${ baseNameParam }\``, () => {
-					expect(
-						select[ selectorName ]( 'nonExistentBaseName' )
-					).toBeUndefined();
-				} );
-
-				it( `returns the error for the given \`${ baseNameParam }\` with empty \`args\` or none`, () => {
-					dispatch.receiveError( errorForbidden, baseName, [] );
-
-					expect( select[ selectorName ]( baseName ) ).toEqual(
-						errorForbidden
-					);
-					expect( select[ selectorName ]( baseName, [] ) ).toEqual(
-						errorForbidden
-					);
-				} );
-
-				it( `returns the error received for the given \`${ baseNameParam }\` and \`args\``, () => {
-					dispatch.receiveError( errorNotFound, baseName, [] );
-					dispatch.receiveError( errorForbidden, baseName, args );
-
-					expect( select[ selectorName ]( baseName, args ) ).toEqual(
-						errorForbidden
-					);
-				} );
-			}
-		);
-
-		describe( 'getError', () => {
-			describe( 'legacy argumentless behavior', () => {
-				it( 'returns `undefined` if no error exists', () => {
-					expect( select.getError() ).toBeUndefined();
-				} );
-
-				it( 'returns the error which was received without any `baseName` or `args`', () => {
-					dispatch.receiveError( errorNotFound, baseName, [] );
-
-					expect( select.getError() ).toBeUndefined();
-
-					dispatch.receiveError( errorForbidden );
-
-					expect( select.getError() ).toEqual( errorForbidden );
-				} );
+		describe( 'getErrorForSelector', () => {
+			it( 'requires a `selectorName` param', () => {
+				expect( () => {
+					select.getErrorForSelector();
+				} ).toThrow( 'selectorName is required.' );
 			} );
 
+			it( 'returns `undefined` when no has been received error for the given `selectorName`', () => {
+				expect(
+					select.getErrorForSelector( 'nonExistentBaseName' )
+				).toBeUndefined();
+			} );
+
+			it( 'returns the error for the given `selectorName` with empty `args` or none', () => {
+				dispatch.receiveError( errorForbidden, baseName, [] );
+
+				expect( select.getErrorForSelector( baseName ) ).toEqual(
+					errorForbidden
+				);
+				expect( select.getErrorForSelector( baseName, [] ) ).toEqual(
+					errorForbidden
+				);
+			} );
+
+			it( 'returns the error received for the given `selectorName` and `args`', () => {
+				dispatch.receiveError( errorNotFound, baseName, [] );
+				dispatch.receiveError( errorForbidden, baseName, args );
+
+				expect( select.getErrorForSelector( baseName, args ) ).toEqual(
+					errorForbidden
+				);
+			} );
+		} );
+
+		describe( 'getErrorForAction', () => {
+			it( 'requires a `actionName` param', () => {
+				expect( () => {
+					select.getErrorForAction();
+				} ).toThrow( 'actionName is required.' );
+			} );
+
+			it( 'returns `undefined` when no has been received error for the given `actionName`', () => {
+				expect(
+					select.getErrorForAction( 'nonExistentBaseName' )
+				).toBeUndefined();
+			} );
+
+			it( 'returns the error for the given `actionName` with empty `args` or none', () => {
+				dispatch.receiveError( errorForbidden, baseName, [] );
+
+				expect( select.getErrorForAction( baseName ) ).toEqual(
+					errorForbidden
+				);
+				expect( select.getErrorForAction( baseName, [] ) ).toEqual(
+					errorForbidden
+				);
+			} );
+
+			it( 'returns the error received for the given `actionName` and `args`', () => {
+				dispatch.receiveError( errorNotFound, baseName, [] );
+				dispatch.receiveError( errorForbidden, baseName, args );
+
+				expect( select.getErrorForAction( baseName, args ) ).toEqual(
+					errorForbidden
+				);
+			} );
+		} );
+
+		describe( 'getError', () => {
 			it( 'returns `undefined` if no error exists for the given `baseName` and `args`', () => {
 				expect( select.getError( baseName, args ) ).toBeUndefined();
 			} );
@@ -252,14 +300,86 @@ describe( 'createErrorStore store', () => {
 				);
 			} );
 
-			it( 'returns a list of unique errors, regardless of `baseName` or `args`', () => {
-				dispatch.receiveError( errorNotFound );
+			it( 'returns a list of unique errors, regardless of `args`', () => {
+				dispatch.receiveError( errorNotFound, baseName );
 				dispatch.receiveError( errorNotFound, baseName, [] );
 				dispatch.receiveError( errorNotFound, 'otherBaseName', [] );
 				dispatch.receiveError( errorNotFound, baseName, [ 'foo' ] );
 				dispatch.receiveError( errorNotFound, baseName, [ 'bar' ] );
 
 				expect( select.getErrors() ).toEqual( [ errorNotFound ] );
+			} );
+		} );
+
+		describe( 'getMetaDataForError', () => {
+			it( 'returns null when there is no meta-data found for the error', () => {
+				dispatch.receiveError( errorNotFound, baseName, args );
+
+				expect( select.getMetaDataForError( errorForbidden ) ).toEqual(
+					null
+				);
+			} );
+
+			it( 'returns the meta-data for an error object', () => {
+				// Populate multiple errors to verify the we're correctly looking up the error.
+				dispatch.receiveError( errorNotFound, baseName, [ 'foo' ] );
+				dispatch.receiveError( errorForbidden, 'otherBasename', [
+					'bar',
+				] );
+
+				expect( select.getMetaDataForError( errorNotFound ) ).toEqual( {
+					baseName,
+					args: [ 'foo' ],
+				} );
+			} );
+		} );
+
+		describe( 'getSelectorDataForError', () => {
+			beforeEach( () => {
+				registry = createRegistry();
+
+				storeDefinition = combineStores(
+					{
+						selectors: {
+							getFoo: () => 'some-data',
+						},
+					},
+					createErrorStore( TEST_STORE )
+				);
+				registry.registerStore( TEST_STORE, storeDefinition );
+				dispatch = registry.dispatch( TEST_STORE );
+				store = registry.stores[ TEST_STORE ].store;
+				select = registry.select( TEST_STORE );
+			} );
+
+			it( 'returns null when there is no meta-data found for the error', () => {
+				dispatch.receiveError( errorNotFound, baseName, args );
+
+				expect(
+					select.getSelectorDataForError( errorForbidden )
+				).toEqual( null );
+			} );
+
+			it( 'returns null when there is no selector found for the error', () => {
+				dispatch.receiveError( errorNotFound, 'getBar', args );
+
+				expect(
+					select.getSelectorDataForError( errorNotFound )
+				).toEqual( null );
+			} );
+
+			it( 'returns the selector data for an error object', () => {
+				// Populate multiple errors to verify the we're correctly looking up the error.
+				dispatch.receiveError( errorNotFound, baseName, [ 'foo' ] );
+				dispatch.receiveError( errorForbidden, 'getBar', [ 'bar' ] );
+
+				expect(
+					select.getSelectorDataForError( errorNotFound )
+				).toEqual( {
+					storeName: TEST_STORE,
+					name: baseName,
+					args: [ 'foo' ],
+				} );
 			} );
 		} );
 
@@ -270,12 +390,6 @@ describe( 'createErrorStore store', () => {
 
 			it( 'returns `true` if there are any errors', () => {
 				dispatch.receiveError( errorNotFound, baseName, args );
-
-				expect( select.hasErrors() ).toBe( true );
-			} );
-
-			it( 'returns `true` if an error was received with no arguments', () => {
-				dispatch.receiveError( errorNotFound );
 
 				expect( select.hasErrors() ).toBe( true );
 			} );

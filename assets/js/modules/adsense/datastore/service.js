@@ -24,13 +24,11 @@ import { addQueryArgs } from '@wordpress/url';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { createRegistrySelector } from 'googlesitekit-data';
 import { MODULES_ADSENSE } from './constants';
 import { CORE_USER } from '../../../googlesitekit/datastore/user/constants';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
 import { parseDomain } from '../util/url';
-
-const { createRegistrySelector } = Data;
 
 export const selectors = {
 	/**
@@ -45,25 +43,30 @@ export const selectors = {
 	 * @return {(string|undefined)} The URL to the service, or `undefined` if not loaded.
 	 */
 	getServiceURL: createRegistrySelector(
-		( select ) => ( state, { path, query } = {} ) => {
-			const userEmail = select( CORE_USER ).getEmail();
-			if ( userEmail === undefined ) {
-				return undefined;
-			}
+		( select ) =>
+			( state, { path, query } = {} ) => {
+				// Note: /u/0 is necessary to keep here in order for paths to be resolved properly;
+				// AccountChooser will update this part of the URL accordingly.
+				let serviceURL = 'https://www.google.com/adsense/new/u/0';
 
-			const baseURI = 'https://www.google.com/adsense/new/u/0';
-			const queryParams = query
-				? { ...query, authuser: userEmail }
-				: { authuser: userEmail };
-			if ( path ) {
-				const sanitizedPath = `/${ path.replace( /^\//, '' ) }`;
-				return addQueryArgs(
-					`${ baseURI }${ sanitizedPath }`,
-					queryParams
-				);
+				if ( path ) {
+					const sanitizedPath = `/${ path.replace( /^\//, '' ) }`;
+					serviceURL = `${ serviceURL }${ sanitizedPath }`;
+				}
+
+				if ( query ) {
+					serviceURL = addQueryArgs( serviceURL, query );
+				}
+
+				const accountChooserBaseURI =
+					select( CORE_USER ).getAccountChooserURL( serviceURL );
+
+				if ( accountChooserBaseURI === undefined ) {
+					return undefined;
+				}
+
+				return accountChooserBaseURI;
 			}
-			return addQueryArgs( baseURI, queryParams );
-		}
 	),
 
 	/**
@@ -82,13 +85,10 @@ export const selectors = {
 			utm_medium: 'wordpress_signup',
 		};
 		if ( undefined !== siteURL ) {
-			query.url = siteURL;
+			query.url = parseDomain( siteURL );
 		}
 
-		return addQueryArgs(
-			'https://www.google.com/adsense/signup/new',
-			query
-		);
+		return addQueryArgs( 'https://www.google.com/adsense/signup', query );
 	} ),
 
 	/**
@@ -105,34 +105,9 @@ export const selectors = {
 			return undefined;
 		}
 
-		const path = `${ accountID }/home`;
 		const query = { source: 'site-kit' };
 
-		return select( MODULES_ADSENSE ).getServiceURL( { path, query } );
-	} ),
-
-	/**
-	 * Returns the service URL to an AdSense account's site overview page.
-	 *
-	 * @since 1.14.0
-	 *
-	 * @return {(string|undefined)} AdSense account site overview URL (or `undefined` if not loaded).
-	 */
-	getServiceAccountSiteURL: createRegistrySelector( ( select ) => () => {
-		const accountID = select( MODULES_ADSENSE ).getAccountID();
-		const siteURL = select( CORE_SITE ).getReferenceSiteURL();
-
-		if ( accountID === undefined || siteURL === undefined ) {
-			return undefined;
-		}
-
-		const path = `${ accountID }/home`;
-		const query = {
-			source: 'site-kit',
-			url: parseDomain( siteURL ) || siteURL,
-		};
-
-		return select( MODULES_ADSENSE ).getServiceURL( { path, query } );
+		return select( MODULES_ADSENSE ).getServiceURL( { accountID, query } );
 	} ),
 
 	/**
@@ -238,6 +213,18 @@ export const selectors = {
 
 			return select( MODULES_ADSENSE ).getServiceURL( { path, query } );
 		}
+	),
+
+	/**
+	 * Overrides the details link URL for this module.
+	 *
+	 * @since 1.144.0
+	 *
+	 * @return {(string|undefined)} AdSense account sites list URL (or `undefined` if not loaded).
+	 */
+	getDetailsLinkURL: createRegistrySelector(
+		( select ) => () =>
+			select( MODULES_ADSENSE ).getServiceAccountManageSitesURL()
 	),
 };
 

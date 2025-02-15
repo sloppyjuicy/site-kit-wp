@@ -17,14 +17,31 @@
  */
 
 /**
+ * Internal dependencies
+ */
+import { HOUR_IN_SECONDS } from '../../util';
+
+/**
  * Prefix used for all Site Kit keys.
+ *
+ * Anything not using this prefix should not be touched by this library.
+ *
+ * @since 1.96.0
+ * @private
+ */
+export const STORAGE_KEY_PREFIX_ROOT = 'googlesitekit_';
+
+/**
+ * Prefix used for all Site Kit keys for the current Site Kit version.
  *
  * Anything not using this key should not be touched by this library.
  *
  * @since 1.5.0
+ * @since 1.92.0 Updated to include a user, session, and blog-specific hash.
+ * @since 1.96.0 Updated to make use of the new STORAGE_KEY_PREFIX_ROOT constant.
  * @private
  */
-export const STORAGE_KEY_PREFIX = `googlesitekit_${ global.GOOGLESITEKIT_VERSION }_`;
+export const STORAGE_KEY_PREFIX = `${ STORAGE_KEY_PREFIX_ROOT }${ global.GOOGLESITEKIT_VERSION }_${ global._googlesitekitBaseData.storagePrefix }_`;
 
 const defaultOrder = [ 'sessionStorage', 'localStorage' ];
 let storageBackend;
@@ -85,6 +102,7 @@ export const resetDefaultStorageOrder = () => {
  * @param {string} type Browser storage to test. Should be one of `localStorage` or `sessionStorage`.
  * @return {boolean} True if the given storage is available, false otherwise.
  */
+// eslint-disable-next-line require-await
 export const isStorageAvailable = async ( type ) => {
 	const storage = global[ type ];
 
@@ -173,7 +191,11 @@ export const getItem = async ( key ) => {
 			if (
 				timestamp &&
 				( ! ttl || // Ensure the cached data isn't too old.
-					Math.round( Date.now() / 1000 ) - timestamp < ttl )
+					// The cache dates shouldn't rely on reference
+					// dates for cache expiration. This is a case
+					// where we actually want to rely on
+					// the _actual_ date/time the data was set.
+					Math.round( Date.now() / 1000 ) - timestamp < ttl ) // eslint-disable-line sitekit/no-direct-date
 			) {
 				return {
 					cacheHit: true,
@@ -200,7 +222,7 @@ export const getItem = async ( key ) => {
  *
  * @param {string}  key              Name of cache key.
  * @param {*}       value            Value to store in the cache.
- * @param {Object}  args           	 Optional object containing ttl, timestamp and isError keys.
+ * @param {Object}  args             Optional object containing ttl, timestamp and isError keys.
  * @param {number}  [args.ttl]       Optional. Validity of the cached item in seconds.
  * @param {number}  [args.timestamp] Optional. Timestamp when the cached item was created.
  * @param {boolean} [args.isError]   Optional. Whether the cached item is an error.
@@ -210,8 +232,11 @@ export const setItem = async (
 	key,
 	value,
 	{
-		ttl = 3600, // One hour.
-		timestamp = Math.round( Date.now() / 1000 ),
+		ttl = HOUR_IN_SECONDS,
+		// Cached times should rely on real times, not the reference date,
+		// so the cache timeouts are consistent even when changing
+		// the reference dates when developing/testing.
+		timestamp = Math.round( Date.now() / 1000 ), // eslint-disable-line sitekit/no-direct-date
 		isError = false,
 	} = {}
 ) => {
@@ -257,7 +282,11 @@ export const deleteItem = async ( key ) => {
 
 	if ( storage ) {
 		try {
-			storage.removeItem( `${ STORAGE_KEY_PREFIX }${ key }` );
+			const fullKey = key.startsWith( STORAGE_KEY_PREFIX_ROOT )
+				? key
+				: `${ STORAGE_KEY_PREFIX }${ key }`;
+
+			storage.removeItem( fullKey );
 
 			return true;
 		} catch ( error ) {
@@ -287,8 +316,8 @@ export const getKeys = async () => {
 			const keys = [];
 			for ( let i = 0; i < storage.length; i++ ) {
 				const itemKey = storage.key( i );
-				if ( itemKey.indexOf( STORAGE_KEY_PREFIX ) === 0 ) {
-					keys.push( itemKey.substring( STORAGE_KEY_PREFIX.length ) );
+				if ( itemKey.indexOf( STORAGE_KEY_PREFIX_ROOT ) === 0 ) {
+					keys.push( itemKey );
 				}
 			}
 

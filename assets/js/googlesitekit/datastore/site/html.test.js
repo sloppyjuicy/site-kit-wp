@@ -22,7 +22,6 @@
 import API from 'googlesitekit-api';
 import {
 	createTestRegistry,
-	unsubscribeFromAll,
 	untilResolved,
 } from '../../../../../tests/js/utils';
 import { CORE_SITE } from './constants';
@@ -40,10 +39,6 @@ describe( 'core/site html', () => {
 
 	afterAll( () => {
 		API.setUsingCache( true );
-	} );
-
-	afterEach( () => {
-		unsubscribeFromAll( registry );
 	} );
 
 	describe( 'actions', () => {
@@ -95,34 +90,6 @@ describe( 'core/site html', () => {
 					registry.stores[ CORE_SITE ].store.getState().htmlForURL[
 						url
 					]
-				).toBe( html );
-			} );
-		} );
-
-		describe( 'waitForHTMLForURL', () => {
-			it( 'supports asynchronous waiting for HTML', async () => {
-				const url = 'https://example.com';
-				const html =
-					'<html><head><title>Example HTML</title></head><body><h1>Example HTML H1</h1></body></html>';
-
-				fetchMock.getOnce(
-					{ query: { tagverify: '1' } },
-					{ body: html, status: 200 }
-				);
-				const promise = registry
-					.dispatch( CORE_SITE )
-					.waitForHTMLForURL( url );
-
-				expect(
-					registry.select( CORE_SITE ).getHTMLForURL( url )
-				).toBe( undefined );
-
-				await promise;
-
-				expect( fetchMock ).toHaveFetchedTimes( 1 );
-
-				expect(
-					registry.select( CORE_SITE ).getHTMLForURL( url )
 				).toBe( html );
 			} );
 		} );

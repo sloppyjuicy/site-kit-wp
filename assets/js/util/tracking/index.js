@@ -22,27 +22,37 @@
 import createTracking from './createTracking';
 
 const {
-	isFirstAdmin,
-	trackingAllowed,
+	activeModules = [],
+	isSiteKitScreen,
 	trackingEnabled,
 	trackingID,
 	referenceSiteURL,
 	userIDHash,
-} = global._googlesitekitBaseData || {};
+	isAuthenticated,
+	userRoles,
+} = global._googlesitekitTrackingData || {};
+
+const { GOOGLESITEKIT_VERSION: pluginVersion } = global;
 
 const initialConfig = {
-	isFirstAdmin,
+	activeModules,
 	trackingEnabled,
 	trackingID,
 	referenceSiteURL,
 	userIDHash,
+	isSiteKitScreen,
+	userRoles,
+	isAuthenticated,
+	pluginVersion,
 };
 
 const {
 	enableTracking,
 	disableTracking,
 	isTrackingEnabled,
+	initializeSnippet,
 	trackEvent,
+	trackEventOnce,
 } = createTracking( initialConfig );
 
 /**
@@ -61,8 +71,8 @@ function toggleTracking( activeStatus ) {
 }
 
 // Bootstrap on import if tracking is allowed.
-if ( true === trackingAllowed ) {
-	toggleTracking( isTrackingEnabled() );
+if ( isSiteKitScreen && trackingEnabled ) {
+	initializeSnippet();
 }
 
 export {
@@ -71,4 +81,5 @@ export {
 	isTrackingEnabled,
 	toggleTracking,
 	trackEvent,
+	trackEventOnce,
 };

@@ -25,11 +25,10 @@ import { createInterpolateElement } from '@wordpress/element';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import { MODULES_PAGESPEED_INSIGHTS } from '../../datastore/constants';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
 import Link from '../../../../components/Link';
-const { useSelect } = Data;
 
 export default function ReportDetailsLink() {
 	const referenceURL = useSelect( ( select ) =>
@@ -37,6 +36,7 @@ export default function ReportDetailsLink() {
 	);
 	const pagespeedInsightsURL = useSelect( ( select ) =>
 		select( MODULES_PAGESPEED_INSIGHTS ).getServiceURL( {
+			path: 'report',
 			query: { url: referenceURL },
 		} )
 	);

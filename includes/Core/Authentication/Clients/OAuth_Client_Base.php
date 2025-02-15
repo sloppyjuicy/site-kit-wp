@@ -25,7 +25,7 @@ use Google\Site_Kit\Core\Storage\User_Options;
 /**
  * Base class for connecting to Google APIs via OAuth.
  *
- * @since n.e.x.t
+ * @since 1.39.0
  * @access private
  * @ignore
  */
@@ -42,7 +42,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Plugin context.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Context
 	 */
 	protected $context;
@@ -50,7 +50,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Options instance
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Options
 	 */
 	protected $options;
@@ -58,7 +58,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * User_Options instance
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var User_Options
 	 */
 	protected $user_options;
@@ -66,7 +66,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * OAuth credentials instance.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Credentials
 	 */
 	protected $credentials;
@@ -74,7 +74,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Google_Proxy instance.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Google_Proxy
 	 */
 	protected $google_proxy;
@@ -82,7 +82,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Google Client object.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Google_Site_Kit_Client
 	 */
 	protected $google_client;
@@ -90,7 +90,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Profile instance.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Profile
 	 */
 	protected $profile;
@@ -98,7 +98,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Token instance.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Token
 	 */
 	protected $token;
@@ -106,7 +106,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Constructor.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param Context      $context      Plugin context.
 	 * @param Options      $options      Optional. Option API instance. Default is a new instance.
@@ -137,7 +137,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Gets the Google client object.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @since 1.2.0 Now always returns a Google_Site_Kit_Client.
 	 *
 	 * @return Google_Site_Kit_Client Google client object.
@@ -153,7 +153,7 @@ abstract class OAuth_Client_Base {
 					'redirect_uri'             => $this->get_redirect_uri(),
 					'token'                    => $this->get_token(),
 					'token_callback'           => array( $this, 'set_token' ),
-					'token_exception_callback' => function( Exception $e ) {
+					'token_exception_callback' => function ( Exception $e ) {
 						$this->handle_fetch_token_exception( $e );
 					},
 					'required_scopes'          => $this->get_required_scopes(),
@@ -170,7 +170,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Gets the list of currently required Google OAuth scopes.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @see https://developers.google.com/identity/protocols/googlescopes
 	 *
 	 * @return array List of Google OAuth scopes.
@@ -181,7 +181,7 @@ abstract class OAuth_Client_Base {
 		 *
 		 * See all Google oauth scopes here: https://developers.google.com/identity/protocols/googlescopes
 		 *
-		 * @since n.e.x.t
+		 * @since 1.39.0
 		 *
 		 * @param array $scopes List of scopes.
 		 */
@@ -203,7 +203,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Gets the list of currently granted Google OAuth scopes for the current user.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @see https://developers.google.com/identity/protocols/googlescopes
 	 *
 	 * @return string[] List of Google OAuth scopes.
@@ -215,7 +215,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Sets the list of currently granted Google OAuth scopes for the current user.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @see https://developers.google.com/identity/protocols/googlescopes
 	 *
 	 * @param string[] $scopes List of Google OAuth scopes.
@@ -230,7 +230,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Gets the current user's full OAuth token data, including access token and optional refresh token.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @return array Associative array with 'access_token', 'expires_in', 'created', and 'refresh_token' keys, or empty
 	 *               array if no token available.
@@ -242,7 +242,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Sets the current user's full OAuth token data, including access token and optional refresh token.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param array $token {
 	 *     Full token data, optionally including the refresh token.
@@ -255,6 +255,10 @@ abstract class OAuth_Client_Base {
 	 * @return bool True on success, false on failure.
 	 */
 	public function set_token( array $token ) {
+		// Remove the error code from the user options so it doesn't
+		// appear again.
+		$this->user_options->delete( OAuth_Client::OPTION_ERROR_CODE );
+
 		return $this->token->set( $token );
 	}
 
@@ -272,7 +276,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Converts the given error code to a user-facing message.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param string $error_code Error code.
 	 * @return string Error message.
@@ -280,7 +284,7 @@ abstract class OAuth_Client_Base {
 	public function get_error_message( $error_code ) {
 		switch ( $error_code ) {
 			case 'access_denied':
-				return __( 'The Site Kit setup was interrupted because you did not grant the necessary permissions.', 'google-site-kit' );
+				return __( 'Setup was interrupted because you did not grant the necessary permissions.', 'google-site-kit' );
 			case 'access_token_not_received':
 				return __( 'Unable to receive access token because of an unknown error.', 'google-site-kit' );
 			case 'cannot_log_in':
@@ -338,7 +342,7 @@ abstract class OAuth_Client_Base {
 	/**
 	 * Gets the OAuth redirect URI that listens to the callback request.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @return string OAuth redirect URI.
 	 */

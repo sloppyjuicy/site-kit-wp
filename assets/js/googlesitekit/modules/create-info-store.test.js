@@ -24,10 +24,7 @@ import { addQueryArgs } from '@wordpress/url';
 /**
  * Internal dependencies
  */
-import {
-	createTestRegistry,
-	unsubscribeFromAll,
-} from '../../../../tests/js/utils';
+import { createTestRegistry } from '../../../../tests/js/utils';
 import { createInfoStore } from './create-info-store';
 import { CORE_SITE } from '../datastore/site/constants';
 import { CORE_USER } from '../datastore/user/constants';
@@ -42,12 +39,8 @@ describe( 'createInfoStore store', () => {
 		registry = createTestRegistry();
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	describe( 'storeName', () => {
-		it( 'throws an error if storeName is not passed', async () => {
+		it( 'throws an error if storeName is not passed', () => {
 			expect( () => {
 				createInfoStore( MODULE_SLUG );
 			} ).toThrow();
@@ -87,30 +80,6 @@ describe( 'createInfoStore store', () => {
 				} );
 			} );
 
-			// It uses `adminPage` when provided.
-			it( 'returns adminPage url when `adminPage` is provided', () => {
-				registry.dispatch( CORE_SITE ).receiveSiteInfo( {
-					adminURL: 'http://example.com/wp-admin/',
-				} );
-				const { STORE_NAME, ...store } = createInfoStore( MODULE_SLUG, {
-					storeName: TEST_STORE_NAME,
-					adminPage: 'test-admin-page',
-				} );
-				registry.registerStore( STORE_NAME, store );
-
-				const adminSreenURL = registry
-					.select( STORE_NAME )
-					.getAdminScreenURL();
-
-				const { origin, pathname } = new URL( adminSreenURL );
-				expect( origin + pathname ).toEqual(
-					'http://example.com/wp-admin/admin.php'
-				);
-				expect( adminSreenURL ).toMatchQueryParameters( {
-					page: 'test-admin-page',
-				} );
-			} );
-
 			// It adds extra query parameters if provided.
 			it( 'adds extra query parameters to the adminScreenURL when provided', () => {
 				registry.dispatch( CORE_SITE ).receiveSiteInfo( {
@@ -137,6 +106,11 @@ describe( 'createInfoStore store', () => {
 		} );
 
 		describe( 'getAdminReauthURL', () => {
+			beforeEach( () => {
+				registry
+					.dispatch( CORE_USER )
+					.receiveConnectURL( 'http://example.com/connect' );
+			} );
 			// It generates an adminReauthURL with no slug passed.
 			it( 'works with no slug passed', () => {
 				registry.dispatch( CORE_SITE ).receiveSiteInfo( {

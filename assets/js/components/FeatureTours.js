@@ -19,39 +19,67 @@
 /**
  * External dependencies
  */
-import PropTypes from 'prop-types';
+import { useMount } from 'react-use';
+
+/**
+ * WordPress dependencies
+ */
+import { useEffect } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { CORE_USER } from '../googlesitekit/datastore/user/constants';
+import useViewContext from '../hooks/useViewContext';
 import TourTooltips from './TourTooltips';
-const { useSelect } = Data;
 
-export default function FeatureTours( { viewContext } ) {
-	const nextTour = useSelect(
-		( select ) =>
-			select( CORE_USER ).getFeatureToursForView( viewContext )?.[ 0 ]
-	);
-	const toursAreOnCooldown = useSelect( ( select ) =>
-		select( CORE_USER ).areFeatureToursOnCooldown()
+export default function FeatureTours() {
+	const viewContext = useViewContext();
+	const { triggerTourForView } = useDispatch( CORE_USER );
+
+	useMount( () => {
+		triggerTourForView( viewContext );
+	} );
+
+	const tour = useSelect( ( select ) =>
+		select( CORE_USER ).getCurrentTour()
 	);
 
-	if ( ! nextTour || toursAreOnCooldown ) {
+	useEffect( () => {
+		if ( ! tour ) {
+			return;
+		}
+
+		const dashboardElement = document.getElementById(
+			'js-googlesitekit-main-dashboard'
+		);
+
+		if ( ! dashboardElement ) {
+			return;
+		}
+
+		const observer = new ResizeObserver( () => {
+			global.dispatchEvent( new Event( 'resize' ) );
+		} );
+
+		observer.observe( dashboardElement );
+
+		return () => {
+			observer.disconnect();
+		};
+	}, [ tour ] );
+
+	if ( ! tour ) {
 		return null;
 	}
 
 	return (
 		<TourTooltips
-			tourID={ nextTour.slug }
-			steps={ nextTour.steps }
-			gaEventCategory={ nextTour.gaEventCategory }
-			callback={ nextTour.callback }
+			tourID={ tour.slug }
+			steps={ tour.steps }
+			gaEventCategory={ tour.gaEventCategory }
+			callback={ tour.callback }
 		/>
 	);
 }
-
-FeatureTours.propTypes = {
-	viewContext: PropTypes.string,
-};

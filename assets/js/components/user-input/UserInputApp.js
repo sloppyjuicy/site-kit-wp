@@ -20,34 +20,50 @@
  * WordPress dependencies
  */
 import { Fragment } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { ProgressBar } from 'googlesitekit-components';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
-import { useFeature } from '../../hooks/useFeature';
 import { Grid, Row, Cell } from '../../material-components';
 import Header from '../Header';
 import HelpMenu from '../help/HelpMenu';
 import PageHeader from '../PageHeader';
-import ProgressBar from '../ProgressBar';
 import UserInputQuestionnaire from './UserInputQuestionnaire';
-const { useSelect } = Data;
+import Layout from '../layout/Layout';
+import {
+	FORM_USER_INPUT_QUESTION_NUMBER,
+	getUserInputQuestions,
+} from './util/constants';
+import { CORE_FORMS } from '../../googlesitekit/datastore/forms/constants';
 
 export default function UserInputApp() {
-	const userInputEnabled = useFeature( 'userInput' );
-	const { hasFinishedGettingInputSettings } = useSelect( ( select ) => ( {
-		userInputSettings: select( CORE_USER ).getUserInputSettings(), // This will be used in the children components.
-		hasFinishedGettingInputSettings: select(
-			CORE_USER
-		).hasFinishedResolution( 'getUserInputSettings' ),
-	} ) );
+	const questionNumber =
+		useSelect( ( select ) =>
+			select( CORE_FORMS ).getValue(
+				FORM_USER_INPUT_QUESTION_NUMBER,
+				'questionNumber'
+			)
+		) || 1;
 
-	if ( ! userInputEnabled ) {
-		return <div>{ __( 'Something went wrong.', 'google-site-kit' ) }</div>;
-	}
+	const questions = getUserInputQuestions();
+	const questionTitle = questions[ questionNumber - 1 ]?.title || '';
+
+	const hasFinishedGettingInputSettings = useSelect( ( select ) => {
+		// This needs to be called here to check on its resolution,
+		// as it's called/used by child components of this component,
+		// but we need to call it here to know if it's resolving.
+		//
+		// This is sort of a select side-effect, but it's necessary here.
+		select( CORE_USER ).getUserInputSettings();
+
+		return select( CORE_USER ).hasFinishedResolution(
+			'getUserInputSettings'
+		);
+	} );
 
 	return (
 		<Fragment>
@@ -66,50 +82,49 @@ export default function UserInputApp() {
 						</Grid>
 					) }
 					{ hasFinishedGettingInputSettings && (
-						<Fragment>
-							<Grid className="googlesitekit-user-input__header">
-								<Row>
-									<Cell
-										lgSize={ 6 }
-										mdSize={ 8 }
-										smSize={ 4 }
-									>
-										<PageHeader
-											className="googlesitekit-heading-2 googlesitekit-user-input__heading"
-											title={ __(
-												'Customize Site Kit to match your goals',
-												'google-site-kit'
+						<Grid>
+							<Layout rounded>
+								<Grid className="googlesitekit-user-input__header">
+									<Row>
+										<Cell
+											size={ 12 }
+											className="googlesitekit-user-input__question-number"
+										>
+											{ sprintf(
+												/*  translators: %d is replaced with the current page number (1, 2, or 3 etc.). */
+												__(
+													'%d / 3',
+													'google-site-kit'
+												),
+												questionNumber
 											) }
-											fullWidth
-										/>
-									</Cell>
-									<Cell
-										lgSize={ 6 }
-										mdSize={ 8 }
-										smSize={ 4 }
-									>
-										<span className="googlesitekit-user-input__subtitle">
-											{ __(
-												'Get metrics and suggestions that are specific to your site by telling Site Kit more about your site',
-												'google-site-kit'
-											) }
-										</span>
-									</Cell>
-								</Row>
-							</Grid>
+										</Cell>
+									</Row>
 
-							<Grid className="googlesitekit-user-input__content">
-								<Row>
-									<Cell
-										lgSize={ 12 }
-										mdSize={ 8 }
-										smSize={ 4 }
-									>
-										<UserInputQuestionnaire />
-									</Cell>
-								</Row>
-							</Grid>
-						</Fragment>
+									<Row>
+										<Cell lgSize={ 12 }>
+											<PageHeader
+												className="googlesitekit-heading-3 googlesitekit-user-input__heading"
+												title={ questionTitle }
+												fullWidth
+											/>
+										</Cell>
+									</Row>
+								</Grid>
+
+								<Grid className="googlesitekit-user-input__content">
+									<Row>
+										<Cell
+											lgSize={ 12 }
+											mdSize={ 8 }
+											smSize={ 4 }
+										>
+											<UserInputQuestionnaire />
+										</Cell>
+									</Row>
+								</Grid>
+							</Layout>
+						</Grid>
 					) }
 				</div>
 			</div>

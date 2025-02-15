@@ -24,24 +24,28 @@ import { delay } from 'lodash';
 /**
  * WordPress dependencies
  */
-import { __ } from '@wordpress/i18n';
+import { __, _x } from '@wordpress/i18n';
 import { Component, Fragment } from '@wordpress/element';
 import { compose } from '@wordpress/compose';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { withSelect } from 'googlesitekit-data';
 import API from 'googlesitekit-api';
+import { Button } from 'googlesitekit-components';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
+import {
+	PERMISSION_SETUP,
+	CORE_USER,
+} from '../../googlesitekit/datastore/user/constants';
+import { Cell, Grid, Row } from '../../material-components';
 import Header from '../Header';
-import Button from '../Button';
 import Layout from '../layout/Layout';
-import { trackEvent, clearWebStorage } from '../../util';
+import { clearCache } from '../../googlesitekit/api/cache';
 import STEPS from './wizard-steps';
 import WizardProgressStep from './wizard-progress-step';
 import HelpMenu from '../help/HelpMenu';
-const { withSelect } = Data;
 
 class SetupUsingGCP extends Component {
 	constructor( props ) {
@@ -57,10 +61,7 @@ class SetupUsingGCP extends Component {
 			needReauthenticate,
 		} = global._googlesitekitLegacyData.setup;
 
-		const { canSetup } = global._googlesitekitLegacyData.permissions;
-
 		this.state = {
-			canSetup,
 			isAuthenticated,
 			isVerified,
 			needReauthenticate,
@@ -78,11 +79,12 @@ class SetupUsingGCP extends Component {
 		this.resetAndRestart = this.resetAndRestart.bind( this );
 		this.completeSetup = this.completeSetup.bind( this );
 		this.setErrorMessage = this.setErrorMessage.bind( this );
+		this.onButtonClick = this.onButtonClick.bind( this );
 	}
 
 	async resetAndRestart() {
 		await API.set( 'core', 'site', 'reset' );
-		clearWebStorage();
+		await clearCache();
 
 		this.setState( {
 			isSiteKitConnected: false,
@@ -185,9 +187,14 @@ class SetupUsingGCP extends Component {
 		return '';
 	}
 
+	onButtonClick() {
+		const { connectURL } = this.state;
+
+		document.location = connectURL;
+	}
+
 	render() {
 		const {
-			canSetup,
 			isAuthenticated,
 			isVerified,
 			needReauthenticate,
@@ -196,7 +203,7 @@ class SetupUsingGCP extends Component {
 			isSiteKitConnected,
 		} = this.state;
 
-		const { redirectURL } = this.props;
+		const { canSetup, redirectURL } = this.props;
 
 		if ( this.isSetupFinished() ) {
 			delay(
@@ -243,25 +250,15 @@ class SetupUsingGCP extends Component {
 					<HelpMenu />
 				</Header>
 				<div className="googlesitekit-wizard">
-					<div className="mdc-layout-grid">
-						<div className="mdc-layout-grid__inner">
-							<div
-								className="
-								mdc-layout-grid__cell
-								mdc-layout-grid__cell--span-12
-							"
-							>
+					<Grid>
+						<Row>
+							<Cell size={ 12 }>
 								<Layout>
 									<section className="googlesitekit-wizard-progress">
-										<div className="mdc-layout-grid">
-											<div className="mdc-layout-grid__inner">
+										<Grid>
+											<Row>
 												{ showVerificationSteps && (
-													<div
-														className="
-														mdc-layout-grid__cell
-														mdc-layout-grid__cell--span-12
-													"
-													>
+													<Cell size={ 12 }>
 														<div className="googlesitekit-wizard-progress__steps">
 															{ Object.keys(
 																progressSteps
@@ -316,20 +313,15 @@ class SetupUsingGCP extends Component {
 																}
 															) }
 														</div>
-													</div>
+													</Cell>
 												) }
-											</div>
-										</div>
+											</Row>
+										</Grid>
 										{ showAuthenticateButton && (
 											<div className="googlesitekit-setup__footer">
-												<div className="mdc-layout-grid">
-													<div className="mdc-layout-grid__inner">
-														<div
-															className="
-															mdc-layout-grid__cell
-															mdc-layout-grid__cell--span-12
-														"
-														>
+												<Grid>
+													<Row>
+														<Cell size={ 12 }>
 															<h1 className="googlesitekit-setup__title">
 																{ __(
 																	'Authenticate Site Kit',
@@ -344,31 +336,29 @@ class SetupUsingGCP extends Component {
 															</p>
 															<Button
 																href="#"
-																onClick={ async () => {
-																	await trackEvent(
-																		'plugin_setup',
-																		'signin_with_google'
-																	);
-																	document.location = connectURL;
-																} }
+																onClick={
+																	this
+																		.onButtonClick
+																}
 															>
-																{ __(
+																{ _x(
 																	'Sign in with Google',
+																	'Service name',
 																	'google-site-kit'
 																) }
 															</Button>
-														</div>
-													</div>
-												</div>
+														</Cell>
+													</Row>
+												</Grid>
 											</div>
 										) }
 									</section>
 									{ showVerificationSteps &&
 										wizardStepComponent }
 								</Layout>
-							</div>
-						</div>
-					</div>
+							</Cell>
+						</Row>
+					</Grid>
 				</div>
 			</Fragment>
 		);
@@ -378,6 +368,7 @@ class SetupUsingGCP extends Component {
 export default compose(
 	withSelect( ( select ) => {
 		return {
+			canSetup: select( CORE_USER ).hasCapability( PERMISSION_SETUP ),
 			redirectURL: select( CORE_SITE ).getAdminURL(
 				'googlesitekit-dashboard',
 				{

@@ -29,8 +29,8 @@ class ScreensTest extends TestCase {
 	 */
 	private $screens;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
 		$assets  = new Assets( $context );
@@ -61,7 +61,7 @@ class ScreensTest extends TestCase {
 			)
 		);
 
-		$output_notice = function() {
+		$output_notice = function () {
 			echo '<div class="notice notice-error">Error!</div>';
 		};
 
@@ -82,7 +82,7 @@ class ScreensTest extends TestCase {
 	 * @dataProvider data_removal_of_admin_notices
 	 */
 	public function test_removal_of_admin_notices_outside_sitekit( $hookname ) {
-		$output_notice = function() {
+		$output_notice = function () {
 			echo '<div class="notice notice-error">Error!</div>';
 		};
 

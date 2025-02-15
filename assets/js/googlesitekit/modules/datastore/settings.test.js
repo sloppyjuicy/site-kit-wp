@@ -20,14 +20,17 @@
  * Internal dependencies
  */
 import Modules from 'googlesitekit-modules';
+import { combineStores } from 'googlesitekit-data';
 import { CORE_MODULES } from './constants';
 import {
 	createTestRegistry,
 	provideModules,
+	subscribeUntil,
 } from '../../../../../tests/js/utils';
 
 describe( 'core/modules settings', () => {
 	let registry;
+	let areSettingsEditDependenciesLoaded;
 	let submitChanges;
 	const slug = 'test-module';
 	const nonExistentModuleSlug = 'not-module';
@@ -36,21 +39,28 @@ describe( 'core/modules settings', () => {
 	let validateCanSubmitChangesError = false;
 
 	beforeEach( () => {
+		areSettingsEditDependenciesLoaded = jest.fn();
 		submitChanges = jest.fn();
 
 		registry = createTestRegistry();
 
 		registry.registerStore(
 			moduleStoreName,
-			Modules.createModuleStore( slug, {
-				storeName: moduleStoreName,
-				submitChanges,
-				validateCanSubmitChanges: () => {
-					if ( validateCanSubmitChangesError ) {
-						throw new Error( validateCanSubmitChangesError );
-					}
-				},
-			} )
+			combineStores(
+				Modules.createModuleStore( slug, {
+					storeName: moduleStoreName,
+					submitChanges,
+					validateCanSubmitChanges: () => {
+						if ( validateCanSubmitChangesError ) {
+							throw new Error( validateCanSubmitChangesError );
+						}
+					},
+					settingSlugs: [ 'testSetting' ],
+				} ),
+				{
+					selectors: { areSettingsEditDependenciesLoaded },
+				}
+			)
 		);
 
 		registry
@@ -62,7 +72,7 @@ describe( 'core/modules settings', () => {
 
 	describe( 'actions', () => {
 		describe( 'submitChanges', () => {
-			it( 'should return an error if a module doesnt exist', async () => {
+			it( "should return an error if a module doesn't exist", async () => {
 				const expectedError = {
 					error: `The module '${ nonExistentModuleSlug }' does not have a store.`,
 				};
@@ -82,7 +92,7 @@ describe( 'core/modules settings', () => {
 				).toBe( testReturnValue );
 			} );
 
-			it( 'should throw an error if submitChanges has been called without a module slug', async () => {
+			it( 'should throw an error if submitChanges has been called without a module slug', () => {
 				expect( () => {
 					registry.dispatch( CORE_MODULES ).submitChanges();
 				} ).toThrow();
@@ -91,8 +101,66 @@ describe( 'core/modules settings', () => {
 	} );
 
 	describe( 'selectors', () => {
+		describe( 'areSettingsEditDependenciesLoaded', () => {
+			it( 'should return undefined if the module store has not been registered', () => {
+				expect(
+					registry
+						.select( CORE_MODULES )
+						.areSettingsEditDependenciesLoaded(
+							nonExistentModuleSlug
+						)
+				).toBe( undefined );
+			} );
+
+			it( 'should return true for module which does not implement areSettingsEditDependenciesLoaded', () => {
+				const notImplementedSlug = 'not-implemented-module';
+				const notImplementedModuleStoreName = `test/${ notImplementedSlug }`;
+
+				registry.registerStore(
+					notImplementedModuleStoreName,
+					Modules.createModuleStore( notImplementedSlug, {
+						storeName: notImplementedModuleStoreName,
+					} )
+				);
+
+				registry
+					.dispatch( CORE_MODULES )
+					.registerModule( notImplementedSlug, {
+						storeName: notImplementedModuleStoreName,
+					} );
+
+				provideModules( registry );
+
+				expect(
+					registry
+						.select( CORE_MODULES )
+						.areSettingsEditDependenciesLoaded( notImplementedSlug )
+				).toBe( true );
+			} );
+
+			it( 'should proxy the selector call to the module with the given slug', () => {
+				areSettingsEditDependenciesLoaded.mockImplementation(
+					() => false
+				);
+				expect(
+					registry
+						.select( CORE_MODULES )
+						.areSettingsEditDependenciesLoaded( slug )
+				).toBe( false );
+
+				areSettingsEditDependenciesLoaded.mockImplementation(
+					() => true
+				);
+				expect(
+					registry
+						.select( CORE_MODULES )
+						.areSettingsEditDependenciesLoaded( slug )
+				).toBe( true );
+			} );
+		} );
+
 		describe( 'isDoingSubmitChanges', () => {
-			it( 'should return FALSE for non existing module', () => {
+			it( 'should return FALSE for non existent module', () => {
 				expect(
 					registry
 						.select( CORE_MODULES )
@@ -104,9 +172,8 @@ describe( 'core/modules settings', () => {
 				// Check isDoingSubmitChanges is true while submitChanges is being performed
 				let checkIsDoingSubmitChanges;
 				submitChanges.mockImplementation( ( { select } ) => {
-					checkIsDoingSubmitChanges = select(
-						CORE_MODULES
-					).isDoingSubmitChanges( slug );
+					checkIsDoingSubmitChanges =
+						select( CORE_MODULES ).isDoingSubmitChanges( slug );
 				} );
 				await registry.dispatch( CORE_MODULES ).submitChanges( slug );
 				expect( checkIsDoingSubmitChanges ).toBe( true );
@@ -135,6 +202,76 @@ describe( 'core/modules settings', () => {
 				expect(
 					registry.select( CORE_MODULES ).canSubmitChanges( slug )
 				).toBe( false );
+			} );
+		} );
+
+		describe( 'haveSettingsChanged', () => {
+			it( 'should return FALSE for non existent module', () => {
+				expect(
+					registry
+						.select( CORE_MODULES )
+						.haveSettingsChanged( nonExistentModuleSlug )
+				).toBe( false );
+			} );
+
+			it( 'should return true when module settings have changed', async () => {
+				expect(
+					registry.select( CORE_MODULES ).haveSettingsChanged( slug )
+				).toBe( false );
+				const serverValues = { testSetting: 'serverside' };
+				const clientValues = { testSetting: 'clientside' };
+
+				const select = registry.select( moduleStoreName );
+				const dispatch = registry.dispatch( moduleStoreName );
+
+				fetchMock.getOnce(
+					new RegExp(
+						'^/google-site-kit/v1/modules/test-module/data/settings'
+					),
+					{ body: serverValues, status: 200 }
+				);
+
+				select.getSettings();
+				await subscribeUntil(
+					registry,
+					() => select.getSettings() !== undefined
+				);
+
+				// Still false after fetching settings from server.
+				expect( select.haveSettingsChanged() ).toEqual( false );
+
+				// True after updating settings on client.
+				dispatch.setSettings( clientValues );
+				expect( select.haveSettingsChanged() ).toEqual( true );
+
+				// False after updating settings back to original server value on client.
+				dispatch.setSettings( serverValues );
+				expect( select.haveSettingsChanged() ).toEqual( false );
+			} );
+
+			it( 'should return false when module settings have not changed', async () => {
+				expect(
+					registry.select( CORE_MODULES ).haveSettingsChanged( slug )
+				).toBe( false );
+				const serverValues = { testSetting: 'serverside' };
+
+				const select = registry.select( moduleStoreName );
+				const dispatch = registry.dispatch( moduleStoreName );
+
+				fetchMock.getOnce(
+					new RegExp(
+						'^/google-site-kit/v1/modules/test-module/data/settings'
+					),
+					{ body: serverValues, status: 200 }
+				);
+
+				select.getSettings();
+				await subscribeUntil(
+					registry,
+					() => select.getSettings() !== undefined
+				);
+				dispatch.setSettings( serverValues );
+				expect( select.haveSettingsChanged() ).toEqual( false );
 			} );
 		} );
 	} );

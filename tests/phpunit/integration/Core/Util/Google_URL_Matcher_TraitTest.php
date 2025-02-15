@@ -20,8 +20,8 @@ class Google_URL_Matcher_TraitTest extends TestCase {
 
 	private $matcher;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		$this->matcher = new Google_URL_Matcher();
 	}
@@ -56,7 +56,7 @@ class Google_URL_Matcher_TraitTest extends TestCase {
 			),
 			'different domain'                => array(
 				'http://example.com',
-				'http://example2.com',
+				'http://example.org',
 				false,
 			),
 			'different path'                  => array(
@@ -132,7 +132,7 @@ class Google_URL_Matcher_TraitTest extends TestCase {
 			),
 			'different domain'                        => array(
 				'example.com',
-				'example2.com',
+				'example.org',
 				false,
 			),
 			'subdomain'                               => array(
@@ -218,4 +218,3 @@ class Google_URL_Matcher_TraitTest extends TestCase {
 		);
 	}
 }
-

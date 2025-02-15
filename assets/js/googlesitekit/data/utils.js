@@ -20,8 +20,8 @@
  * External dependencies
  */
 import invariant from 'invariant';
-import mapValues from 'lodash/mapValues';
 import memize from 'memize';
+import { mapValues } from 'lodash';
 
 /**
  * WordPress dependencies
@@ -363,25 +363,32 @@ const getStrictSelectors = memize( ( selectors ) =>
  *
  * @since 1.19.0
  *
- * @param {Function} validate Validation function callback.
+ * @param {Function} validate         Validation function callback.
+ * @param {Object}   [options]        Options to modify the behavior of the generated selectors.
+ * @param {boolean}  [options.negate] Whether to negate the boolean result or not. Default: false.
  * @return {Object} Safe and dangerous selectors.
  */
-export function createValidationSelector( validate ) {
+export function createValidationSelector( validate, { negate = false } = {} ) {
 	const safeSelector = createRegistrySelector(
-		( select ) => ( state, ...args ) => {
-			try {
-				validate( select, state, ...args );
-				return true;
-			} catch {
-				return false;
+		( select ) =>
+			( state, ...args ) => {
+				const pass = negate ? false : true;
+				const fail = negate ? true : false;
+
+				try {
+					validate( select, state, ...args );
+					return pass;
+				} catch {
+					return fail;
+				}
 			}
-		}
 	);
 
 	const dangerousSelector = createRegistrySelector(
-		( select ) => ( state, ...args ) => {
-			validate( select, state, ...args );
-		}
+		( select ) =>
+			( state, ...args ) => {
+				validate( select, state, ...args );
+			}
 	);
 
 	return {

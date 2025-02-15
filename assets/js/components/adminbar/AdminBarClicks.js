@@ -24,7 +24,7 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
 import { CORE_SITE } from '../../googlesitekit/datastore/site/constants';
 import {
@@ -32,14 +32,16 @@ import {
 	DATE_RANGE_OFFSET,
 } from '../../modules/search-console/datastore/constants';
 import { calculateChange } from '../../util';
-import { isZeroReport } from '../../modules/search-console/util';
 import PreviewBlock from '../PreviewBlock';
 import DataBlock from '../DataBlock';
+import { NOTICE_STYLE } from '../GatheringDataNotice';
 import sumObjectListValue from '../../util/sum-object-list-value';
 import { partitionReport } from '../../util/partition-report';
-const { useSelect } = Data;
 
-function AdminBarClicks( { WidgetReportZero, WidgetReportError } ) {
+function AdminBarClicks( { WidgetReportError } ) {
+	const isGatheringData = useSelect( ( select ) =>
+		select( MODULES_SEARCH_CONSOLE ).isGatheringData()
+	);
 	const url = useSelect( ( select ) =>
 		select( CORE_SITE ).getCurrentEntityURL()
 	);
@@ -73,7 +75,7 @@ function AdminBarClicks( { WidgetReportZero, WidgetReportError } ) {
 		] )
 	);
 
-	if ( ! hasFinishedResolution ) {
+	if ( ! hasFinishedResolution || isGatheringData === undefined ) {
 		return <PreviewBlock width="auto" height="59px" />;
 	}
 
@@ -83,16 +85,17 @@ function AdminBarClicks( { WidgetReportZero, WidgetReportError } ) {
 		);
 	}
 
-	if ( isZeroReport( searchConsoleData ) ) {
-		return <WidgetReportZero moduleSlug="search-console" />;
-	}
-
 	const { compareRange, currentRange } = partitionReport( searchConsoleData, {
 		dateRangeLength,
 	} );
 	const totalClicks = sumObjectListValue( currentRange, 'clicks' );
 	const totalOlderClicks = sumObjectListValue( compareRange, 'clicks' );
 	const totalClicksChange = calculateChange( totalOlderClicks, totalClicks );
+
+	const gatheringDataProps = {
+		gatheringData: isGatheringData,
+		gatheringDataNoticeStyle: NOTICE_STYLE.SMALL,
+	};
 
 	return (
 		<DataBlock
@@ -101,6 +104,7 @@ function AdminBarClicks( { WidgetReportZero, WidgetReportError } ) {
 			datapoint={ totalClicks }
 			change={ totalClicksChange }
 			changeDataUnit="%"
+			{ ...gatheringDataProps }
 		/>
 	);
 }

@@ -31,11 +31,15 @@ import {
 	isValidDateString,
 	INVALID_DATE_RANGE_ERROR,
 	INVALID_DATE_STRING_ERROR,
-} from '../../../util/date-range';
+} from '../../../util';
 
 export const initialState = {
 	dateRange: 'last-28-days',
-	referenceDate: getDateString( new Date() ),
+	// This is where we actually _set_ the reference date (which should
+	// have a default value of the current date).
+	//
+	// Using `new Date()` here is appropriate.
+	referenceDate: getDateString( new Date() ), // eslint-disable-line sitekit/no-direct-date
 };
 
 /**
@@ -152,10 +156,17 @@ export const selectors = {
 		state,
 		{
 			compare = false,
-			offsetDays = 0,
+			offsetDays,
 			referenceDate = state.referenceDate,
 		} = {}
 	) {
+		if ( offsetDays === undefined ) {
+			global.console.warn(
+				'getDateRangeDates was called without offsetDays'
+			);
+			offsetDays = 0;
+		}
+
 		const dateRange = selectors.getDateRange( state );
 		const endDate = getPreviousDate( referenceDate, offsetDays );
 		const matches = dateRange.match( '-(.*)-' );

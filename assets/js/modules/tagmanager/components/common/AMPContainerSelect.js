@@ -17,6 +17,11 @@
  */
 
 /**
+ * External dependencies
+ */
+import PropTypes from 'prop-types';
+
+/**
  * WordPress dependencies
  */
 import { useCallback } from '@wordpress/element';
@@ -25,30 +30,37 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import ContainerSelect from './ContainerSelect';
-import { MODULES_TAGMANAGER } from '../../datastore/constants';
+import { Option, Select } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import {
+	CONTAINER_CREATE,
+	MODULES_TAGMANAGER,
+} from '../../datastore/constants';
 import { CORE_SITE } from '../../../../googlesitekit/datastore/site/constants';
-const { useSelect, useDispatch } = Data;
+import ContainerSelect from './ContainerSelect';
+import { trackEvent } from '../../../../util/tracking';
+import useViewContext from '../../../../hooks/useViewContext';
 
-export default function AMPContainerSelect() {
+export default function AMPContainerSelect( { hasModuleAccess } ) {
+	const viewContext = useViewContext();
+
 	const accountID = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getAccountID()
 	);
 	const ampContainerID = useSelect( ( select ) =>
 		select( MODULES_TAGMANAGER ).getAMPContainerID()
 	);
-	const ampContainers = useSelect( ( select ) =>
-		select( MODULES_TAGMANAGER ).getAMPContainers( accountID )
-	);
-	const isAMP = useSelect( ( select ) => select( CORE_SITE ).isAMP() );
-	const isSecondaryAMP = useSelect( ( select ) =>
-		select( CORE_SITE ).isSecondaryAMP()
-	);
+	const ampContainers = useSelect( ( select ) => {
+		if ( hasModuleAccess === false ) {
+			return null;
+		}
 
-	const { setAMPContainerID, setInternalAMPContainerID } = useDispatch(
-		MODULES_TAGMANAGER
-	);
+		return select( MODULES_TAGMANAGER ).getAMPContainers( accountID );
+	} );
+	const isAMP = useSelect( ( select ) => select( CORE_SITE ).isAMP() );
+
+	const { setAMPContainerID, setInternalAMPContainerID } =
+		useDispatch( MODULES_TAGMANAGER );
 	const onSelect = useCallback(
 		( index, item ) => {
 			const {
@@ -57,20 +69,44 @@ export default function AMPContainerSelect() {
 				internalId: newInternalContainerID,
 			} = item.dataset;
 			if ( ampContainerID !== newContainerID ) {
+				const eventAction =
+					newContainerID === CONTAINER_CREATE
+						? 'change_amp_container_new'
+						: 'change_amp_container';
+				trackEvent( `${ viewContext }_tagmanager`, eventAction );
+
 				setAMPContainerID( newContainerID );
 				setInternalAMPContainerID( newInternalContainerID || '' );
 			}
 		},
-		[ ampContainerID, setAMPContainerID, setInternalAMPContainerID ]
+		[
+			ampContainerID,
+			setAMPContainerID,
+			setInternalAMPContainerID,
+			viewContext,
+		]
 	);
 
 	if ( ! isAMP ) {
 		return null;
 	}
 
-	const label = isSecondaryAMP
-		? __( 'AMP Container', 'google-site-kit' )
-		: __( 'Container', 'google-site-kit' );
+	const label = __( 'AMP Container', 'google-site-kit' );
+
+	if ( hasModuleAccess === false ) {
+		return (
+			<Select
+				className="googlesitekit-tagmanager__select-container--amp"
+				label={ label }
+				value={ ampContainerID }
+				enhanced
+				outlined
+				disabled
+			>
+				<Option value={ ampContainerID }>{ ampContainerID }</Option>
+			</Select>
+		);
+	}
 
 	return (
 		<ContainerSelect
@@ -82,3 +118,8 @@ export default function AMPContainerSelect() {
 		/>
 	);
 }
+
+// eslint-disable-next-line sitekit/acronym-case
+AMPContainerSelect.propTypes = {
+	hasModuleAccess: PropTypes.bool,
+};

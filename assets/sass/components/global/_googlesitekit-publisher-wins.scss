@@ -19,8 +19,9 @@
 .googlesitekit-publisher-win {
 
 	@include googlesitekit-inner-padding;
-	@include shadow;
 	background: $c-base;
+	display: flex;
+	flex-direction: column;
 	opacity: 1;
 	position: relative;
 	transition:
@@ -28,29 +29,51 @@
 		visibility $t-default ease-in-out;
 	visibility: visible;
 
-	&--win-warning {
-		border-right: 4px solid $c-warning;
+	@media (min-width: $bp-tablet) {
+		flex-direction: row;
+
+		.googlesitekit-publisher-win__secondary-pane-divider {
+			height: 106px;
+			margin: auto 30px;
+		}
 	}
 
-	&--win-error {
-		border-right: 4px solid $c-error;
+	.mdc-layout-grid {
+		flex: 1 1 0;
 	}
 
-	&--is-closed {
-		opacity: 0;
-		visibility: hidden;
+	// Only show one notification at a time.
+	& + .googlesitekit-publisher-win {
+		display: none;
+	}
+
+	.googlesitekit-publisher-win__image-smaller {
+
+		svg {
+			max-height: 105px;
+			width: 100%;
+		}
 	}
 
 	.googlesitekit-publisher-win__title {
+		flex: 1;
 		margin: 0;
+
+		.googlesitekit-badge {
+			margin-left: $grid-gap-phone / 2;
+		}
+
+		.googlesitekit-publisher-win__image-smaller {
+			flex-basis: 75px;
+		}
+	}
+
+	.googlesitekit-publisher-win__desc {
+		max-width: 700px;
 	}
 
 	.googlesitekit-publisher-win__desc:first-child > *:first-child {
 		margin-top: 0;
-	}
-
-	.googlesitekit-cta-link--external {
-		margin-right: 7px;
 	}
 
 	.googlesitekit-publisher-win__small-image {
@@ -58,14 +81,17 @@
 	}
 
 	.googlesitekit-publisher-win__icons {
-		position: absolute;
-		right: 8px;
-		top: 50%;
-		transform: translateY(-50%);
+		display: flex;
+		height: 100%;
+		justify-content: right;
 
 		@media (min-width: $bp-desktop) {
 			right: calc(#{$grid-gap-desktop} * 2);
 		}
+	}
+
+	.googlesitekit-publisher-win__image {
+		align-self: center;
 	}
 
 	.googlesitekit-publisher-win__image-large {
@@ -85,7 +111,7 @@
 			max-width: 100%;
 		}
 
-		@media (max-width: $bp-mobileOnly ), (min-width: $bp-desktop) {
+		@media (max-width: $bp-mobileOnly), (min-width: $bp-desktop) {
 
 			svg {
 				width: 200px;
@@ -93,18 +119,11 @@
 		}
 	}
 
-	.googlesitekit-publisher-win__detect {
-		font-size: 0.75rem;
-
-		@media (min-width: $bp-desktop) {
-			margin-left: 48px;
-		}
-	}
-
 	.googlesitekit-publisher-win__link {
 
 		a {
-			font-size: 1.1rem;
+			font-size: $fs-body-lg;
+			letter-spacing: $ls-m;
 		}
 	}
 
@@ -112,19 +131,8 @@
 		margin-bottom: $grid-gap-desktop;
 	}
 
-	&.win-stats-increase {
-
-		.googlesitekit-publisher-win__stats {
-			margin-bottom: 0;
-		}
-
-		.googlesitekit-subheading-1 {
-			margin-top: 0;
-		}
-	}
-
-	.mdc-button + .googlesitekit-cta-link {
-		margin-left: $grid-gap-desktop;
+	.googlesitekit-button-icon--spinner + .googlesitekit-cta-link {
+		text-align: center;
 	}
 
 	.googlesitekit-publisher-win__logo {
@@ -136,7 +144,8 @@
 
 	.googlesitekit-publisher-win__module-name {
 		display: inline-block;
-		font-size: 0.875rem;
+		font-size: $fs-body-sm;
+		letter-spacing: $ls-xs;
 		line-height: 1;
 		margin-bottom: -1px;
 		vertical-align: bottom;
@@ -149,4 +158,56 @@
 			max-width: 85px;
 		}
 	}
+
+	.googlesitekit-publisher-win__actions {
+		display: flex;
+		gap: $grid-gap-phone / 2;
+	}
+
+	.googlesitekit-publisher-win__title-image-wrapper {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: $grid-gap-phone;
+
+		+ .googlesitekit-cta-link,
+		+ .googlesitekit-publisher-win__actions {
+			margin-top: $grid-gap-phone;
+
+			@media (min-width: $bp-desktop) {
+				margin-top: $grid-gap-desktop;
+			}
+		}
+	}
+
+	.googlesitekit-publisher-win__image-larger {
+
+		svg {
+			display: block;
+		}
+	}
+
+	&.googlesitekit-publisher-win--rounded {
+		border-radius: $br-md;
+	}
+}
+
+.googlesitekit-publisher-win--win-warning {
+	border-right: 4px solid $c-warning;
+
+	.googlesitekit-publisher-win__icons {
+		color: $c-warning;
+	}
+}
+
+.googlesitekit-publisher-win--win-error {
+	border-right: 4px solid $c-error;
+
+	.googlesitekit-publisher-win__icons {
+		color: $c-cinnabar;
+	}
+}
+
+.googlesitekit-publisher-win--is-closed {
+	opacity: 0;
+	visibility: hidden;
 }

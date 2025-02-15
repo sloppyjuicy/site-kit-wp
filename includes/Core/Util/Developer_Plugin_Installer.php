@@ -55,7 +55,7 @@ class Developer_Plugin_Installer {
 		if ( ! defined( 'GOOGLESITEKITDEVSETTINGS_VERSION' ) ) {
 			add_filter(
 				'plugins_api',
-				function( $value, $action, $args ) {
+				function ( $value, $action, $args ) {
 					return $this->plugin_info( $value, $action, $args );
 				},
 				10,
@@ -65,7 +65,7 @@ class Developer_Plugin_Installer {
 
 		add_filter(
 			'googlesitekit_rest_routes',
-			function( $routes ) {
+			function ( $routes ) {
 				return array_merge( $routes, $this->get_rest_routes() );
 			}
 		);
@@ -79,7 +79,7 @@ class Developer_Plugin_Installer {
 	 * @return array List of REST_Route objects.
 	 */
 	private function get_rest_routes() {
-		$can_setup = function() {
+		$can_setup = function () {
 			return current_user_can( Permissions::SETUP );
 		};
 
@@ -89,7 +89,7 @@ class Developer_Plugin_Installer {
 				array(
 					array(
 						'methods'             => WP_REST_Server::READABLE,
-						'callback'            => function( WP_REST_Request $request ) {
+						'callback'            => function () {
 							$is_active = defined( 'GOOGLESITEKITDEVSETTINGS_VERSION' );
 							$installed = $is_active;
 							$slug      = self::SLUG;
@@ -180,12 +180,13 @@ class Developer_Plugin_Installer {
 	 * Gets plugin data from the API.
 	 *
 	 * @since 1.3.0
+	 * @since 1.99.0 Update plugin data to pull from GCS bucket.
 	 *
 	 * @return array|null Associative array of plugin data, or null on failure.
 	 */
 	private function fetch_plugin_data() {
 		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_remote_get_wp_remote_get
-		$response = wp_remote_get( 'https://sitekit.withgoogle.com/service/dev-plugin-updates/' );
+		$response = wp_remote_get( 'https://storage.googleapis.com/site-kit-dev-plugins/google-site-kit-dev-settings/updates.json' );
 
 		// Retrieve data from the body and decode json format.
 		return json_decode( wp_remote_retrieve_body( $response ), true );

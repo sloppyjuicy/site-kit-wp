@@ -25,22 +25,25 @@ import { __ } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-import { Select, Option } from '../../../../material-components';
-import ProgressBar from '../../../../components/ProgressBar';
+import { Option, ProgressBar, Select } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
+import { trackEvent } from '../../../../util';
 import { MODULES_ADSENSE } from '../../datastore/constants';
-const { useSelect, useDispatch } = Data;
+import useViewContext from '../../../../hooks/useViewContext';
 
 export default function AccountSelect() {
+	const viewContext = useViewContext();
+	const eventCategory = `${ viewContext }_adsense`;
+
 	const accountID = useSelect( ( select ) =>
 		select( MODULES_ADSENSE ).getAccountID()
 	);
-	const { accounts, hasResolvedAccounts } = useSelect( ( select ) => ( {
-		accounts: select( MODULES_ADSENSE ).getAccounts(),
-		hasResolvedAccounts: select( MODULES_ADSENSE ).hasFinishedResolution(
-			'getAccounts'
-		),
-	} ) );
+	const accounts = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).getAccounts()
+	);
+	const hasResolvedAccounts = useSelect( ( select ) =>
+		select( MODULES_ADSENSE ).hasFinishedResolution( 'getAccounts' )
+	);
 
 	const { setAccountID } = useDispatch( MODULES_ADSENSE );
 	const onChange = useCallback(
@@ -48,9 +51,10 @@ export default function AccountSelect() {
 			const newAccountID = item.dataset.value;
 			if ( accountID !== newAccountID ) {
 				setAccountID( newAccountID );
+				trackEvent( eventCategory, 'change_account' );
 			}
 		},
-		[ accountID, setAccountID ]
+		[ accountID, eventCategory, setAccountID ]
 	);
 
 	if ( ! hasResolvedAccounts ) {

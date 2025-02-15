@@ -17,6 +17,11 @@
  */
 
 /**
+ * WordPress dependencies
+ */
+import { Fragment } from '@wordpress/element';
+
+/**
  * Internal dependencies
  */
 import CompatibilityChecks from './index';
@@ -24,7 +29,6 @@ import {
 	render,
 	waitForElementToBeRemoved,
 } from '../../../../../tests/js/test-utils';
-import { Fragment } from 'react';
 import {
 	muteFetch,
 	provideSiteInfo,
@@ -53,7 +57,7 @@ describe( 'CompatibilityChecks', () => {
 		// Mock global.location.hostname with value that won't throw error in first check.
 		Object.defineProperty( global.window, 'location', {
 			value: {
-				hostname: 'validurl',
+				hostname: 'validurl.tld',
 			},
 			writable: true,
 		} );
@@ -63,39 +67,52 @@ describe( 'CompatibilityChecks', () => {
 
 	it( 'should initially display "Checking Compatibility..." message', async () => {
 		// Mock request to setup-tag
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/setup-tag/ );
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/connection/ );
 		muteFetch(
-			/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/
+			new RegExp( '^/google-site-kit/v1/core/site/data/setup-tag' )
 		);
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/health-checks/ );
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/connection' )
+		);
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/developer-plugin' )
+		);
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/health-checks' )
+		);
 		muteFetch( { query: { tagverify: '1' } } );
 		// Mock request to AMP project.
 		muteFetch( AMP_PROJECT_TEST_URL );
 
-		const { container } = render(
+		const { container, waitForRegistry } = render(
 			<CompatibilityChecks>{ compatibilityChildren }</CompatibilityChecks>
 		);
 
 		expect( container ).toHaveTextContent( 'Checking Compatibility…' );
-		await waitForElementToBeRemoved(
+
+		await waitForRegistry();
+
+		expect(
 			document.querySelector( '.mdc-linear-progress' )
-		);
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'should display "Your site may not be ready for Site Kit" if a check throws an error', async () => {
 		// Mock request to setup-tag
 		fetchMock.postOnce(
-			/^\/google-site-kit\/v1\/core\/site\/data\/setup-tag/,
+			new RegExp( '^/google-site-kit/v1/core/site/data/setup-tag' ),
 			{ body: {}, status: 500 }
 		);
 
 		// Mock request to developer-plugin when error is thrown.
 		muteFetch(
-			/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/
+			new RegExp( '^/google-site-kit/v1/core/site/data/developer-plugin' )
 		);
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/health-checks/ );
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/connection/ );
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/health-checks' )
+		);
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/connection' )
+		);
 		// Mock request to AMP project.
 		muteFetch( AMP_PROJECT_TEST_URL );
 
@@ -122,7 +139,7 @@ describe( 'CompatibilityChecks', () => {
 
 		// Mock request to setup-tag.
 		fetchMock.postOnce(
-			/^\/google-site-kit\/v1\/core\/site\/data\/setup-tag/,
+			new RegExp( '^/google-site-kit/v1/core/site/data/setup-tag' ),
 			{ body: { token }, status: 200 }
 		);
 
@@ -130,16 +147,26 @@ describe( 'CompatibilityChecks', () => {
 
 		// Mock request to health-checks.
 		fetchMock.getOnce(
-			/^\/google-site-kit\/v1\/core\/site\/data\/health-checks/,
-			{ body: { checks: { googleAPI: { pass: true } } }, status: 200 }
+			new RegExp( '^/google-site-kit/v1/core/site/data/health-checks' ),
+			{
+				body: {
+					checks: {
+						googleAPI: { pass: true },
+						skService: { pass: true },
+					},
+				},
+				status: 200,
+			}
 		);
 
 		// Mock request to AMP project.
 		muteFetch( AMP_PROJECT_TEST_URL );
 		muteFetch(
-			/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/
+			new RegExp( '^/google-site-kit/v1/core/site/data/developer-plugin' )
 		);
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/connection/ );
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/connection' )
+		);
 
 		// Mock getExistingTag request.
 		fetchMock.get(
@@ -168,10 +195,10 @@ describe( 'CompatibilityChecks', () => {
 
 		// Expect to have made requests to the setup-checks and health-checks endpoints and the AMP Project test URL.
 		expect( fetchMock ).toHaveFetched(
-			/^\/google-site-kit\/v1\/core\/site\/data\/setup-tag/
+			new RegExp( '^/google-site-kit/v1/core/site/data/setup-tag' )
 		);
 		expect( fetchMock ).toHaveFetched(
-			/^\/google-site-kit\/v1\/core\/site\/data\/health-checks/
+			new RegExp( '^/google-site-kit/v1/core/site/data/health-checks' )
 		);
 		expect( fetchMock ).toHaveFetched( AMP_PROJECT_TEST_URL );
 	} );
@@ -181,7 +208,7 @@ describe( 'CompatibilityChecks', () => {
 
 		// Mock request to setup-tag.
 		fetchMock.postOnce(
-			/^\/google-site-kit\/v1\/core\/site\/data\/setup-tag/,
+			new RegExp( '^/google-site-kit/v1/core/site/data/setup-tag' ),
 			{ body: { token }, status: 200 }
 		);
 
@@ -190,16 +217,26 @@ describe( 'CompatibilityChecks', () => {
 
 		// Mock request to health-checks.
 		fetchMock.getOnce(
-			/^\/google-site-kit\/v1\/core\/site\/data\/health-checks/,
-			{ body: { checks: { googleAPI: { pass: true } } }, status: 200 }
+			new RegExp( '^/google-site-kit/v1/core/site/data/health-checks' ),
+			{
+				body: {
+					checks: {
+						googleAPI: { pass: true },
+						skService: { pass: true },
+					},
+				},
+				status: 200,
+			}
 		);
 
 		// Mock request to AMP project.
 		muteFetch( AMP_PROJECT_TEST_URL );
 		muteFetch(
-			/^\/google-site-kit\/v1\/core\/site\/data\/developer-plugin/
+			new RegExp( '^/google-site-kit/v1/core/site/data/developer-plugin' )
 		);
-		muteFetch( /^\/google-site-kit\/v1\/core\/site\/data\/connection/ );
+		muteFetch(
+			new RegExp( '^/google-site-kit/v1/core/site/data/connection' )
+		);
 
 		// Mock getExistingTag request
 		fetchMock.get(

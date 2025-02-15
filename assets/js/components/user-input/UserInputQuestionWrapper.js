@@ -20,119 +20,116 @@
  * External dependencies
  */
 import PropTypes from 'prop-types';
-import classnames from 'classnames';
 
 /**
  * WordPress dependencies
  */
 import { __ } from '@wordpress/i18n';
+import { createInterpolateElement } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { Button } from 'googlesitekit-components';
 import { CORE_USER } from '../../googlesitekit/datastore/user/constants';
-import Button from '../Button';
 import { Row, Cell } from '../../material-components';
 import UserInputQuestionInfo from './UserInputQuestionInfo';
 import ErrorNotice from '../ErrorNotice';
-const { useSelect } = Data;
+import CancelUserInputButton from './CancelUserInputButton';
+import { hasErrorForAnswer } from './util/validation';
+import SpinnerButton from '../../googlesitekit/components-gm2/SpinnerButton';
+import { CORE_LOCATION } from '../../googlesitekit/datastore/location/constants';
+import WarningSVG from '../../../svg/icons/warning.svg';
 
 export default function UserInputQuestionWrapper( props ) {
-	const {
-		children,
-		slug,
-		isActive,
-		questionNumber,
-		title,
-		description,
-		next,
-		nextLabel,
-		back,
-		backLabel,
-		error,
-		allowEmptyValues,
-	} = props;
+	const { children, slug, questionNumber, next, back, complete, error } =
+		props;
 
 	const values = useSelect(
 		( select ) => select( CORE_USER ).getUserInputSetting( slug ) || []
 	);
-	const scope = useSelect( ( select ) =>
-		select( CORE_USER ).getUserInputSettingScope( slug )
-	);
-	const author = useSelect( ( select ) =>
-		select( CORE_USER ).getUserInputSettingAuthor( slug )
-	);
 
-	// We have two different behaviors for user input settings screens:
-	//
-	//   1. When a user is on one of the first four screens - we SHOULD disable the Next button
-	//      if a user checks the "Other" checkbox and enters nothing into the text field. In other
-	//      words we should disable the Next button if the values array contains at least one empty value.
-	//
-	//   2. When a user is on the last 5th screen (search terms) - we SHOULD NOT disable the next
-	//      button if at least one search term is entered. In other words we should disable the next
-	//      button only when all values are empty strings.
-	//
-	const hasInvalidValues = allowEmptyValues
-		? // Consider the values array invalid if it contains all values empty.
-		  values.filter( ( value ) => value.trim().length > 0 ).length === 0
-		: // Consider the values array invalid if it contains at least one value that is empty.
-		  values.some( ( value ) => value.trim().length === 0 );
+	const settings = useSelect( ( select ) =>
+		select( CORE_USER ).getUserInputSettings()
+	);
+	const isSavingSettings = useSelect( ( select ) =>
+		select( CORE_USER ).isSavingUserInputSettings( settings )
+	);
+	const isNavigating = useSelect( ( select ) =>
+		select( CORE_LOCATION ).isNavigating()
+	);
+	const isScreenLoading = isSavingSettings || isNavigating;
 
 	return (
-		<div
-			className={ classnames( 'googlesitekit-user-input__question', {
-				'googlesitekit-user-input__question--active': isActive,
-				'googlesitekit-user-input__question--next': ! isActive,
-			} ) }
-		>
-			<Row>
-				<Cell lgSize={ 12 } mdSize={ 8 } smSize={ 4 }>
-					<Row>
-						{ title && (
+		<div className="googlesitekit-user-input__question">
+			<div className="googlesitekit-user-input__question-contents">
+				<Row>
+					<Cell lgSize={ 12 } mdSize={ 8 } smSize={ 4 }>
+						<Row>
 							<UserInputQuestionInfo
-								title={ title }
-								description={ description }
-								scope={ scope }
+								slug={ slug }
 								questionNumber={ questionNumber }
-								author={ author }
 							/>
-						) }
 
-						{ children }
-					</Row>
+							{ children }
+						</Row>
+					</Cell>
+				</Row>
+			</div>
 
-					{ error && <ErrorNotice error={ error } /> }
+			{ error && (
+				<div className="googlesitekit-user-input__error">
+					<ErrorNotice error={ error } Icon={ WarningSVG } />
+				</div>
+			) }
 
-					{ isActive && (
-						<div className="googlesitekit-user-input__buttons">
-							{ back && (
-								<Button
-									className="googlesitekit-user-input__buttons--back"
-									onClick={ back }
-									text
-								>
-									{ backLabel ||
-										__( 'Back', 'google-site-kit' ) }
-								</Button>
-							) }
-							{ next && (
-								<Button
-									className="googlesitekit-user-input__buttons--next"
-									onClick={ next }
-									disabled={
-										values.length === 0 || hasInvalidValues
-									}
-								>
-									{ nextLabel ||
-										__( 'Next', 'google-site-kit' ) }
-								</Button>
-							) }
-						</div>
+			<div className="googlesitekit-user-input__footer googlesitekit-user-input__buttons">
+				<div className="googlesitekit-user-input__footer-nav">
+					{ back && (
+						<Button
+							tertiary
+							className="googlesitekit-user-input__buttons--back"
+							onClick={ back }
+						>
+							{ __( 'Back', 'google-site-kit' ) }
+						</Button>
 					) }
-				</Cell>
-			</Row>
+					{ next && (
+						<Button
+							className="googlesitekit-user-input__buttons--next"
+							onClick={ next }
+							disabled={ hasErrorForAnswer( values ) }
+						>
+							{ __( 'Next', 'google-site-kit' ) }
+						</Button>
+					) }
+					{ complete && (
+						<SpinnerButton
+							className="googlesitekit-user-input__buttons--complete"
+							onClick={ complete }
+							isSaving={ isScreenLoading }
+							disabled={ hasErrorForAnswer( values ) }
+						>
+							{ createInterpolateElement(
+								__(
+									'Complete<span> setup</span>',
+									'google-site-kit'
+								),
+								{
+									span: (
+										<span className="googlesitekit-user-input__responsive-text" />
+									),
+								}
+							) }
+						</SpinnerButton>
+					) }
+				</div>
+
+				<div className="googlesitekit-user-input__footer-cancel">
+					<CancelUserInputButton />
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -141,17 +138,9 @@ UserInputQuestionWrapper.propTypes = {
 	slug: PropTypes.string.isRequired,
 	questionNumber: PropTypes.number.isRequired,
 	children: PropTypes.node,
-	isActive: PropTypes.bool,
-	title: PropTypes.string,
 	description: PropTypes.string,
 	next: PropTypes.func,
-	nextLabel: PropTypes.string,
 	back: PropTypes.func,
-	backLabel: PropTypes.string,
+	complete: PropTypes.func,
 	error: PropTypes.object,
-	allowEmptyValues: PropTypes.bool,
-};
-
-UserInputQuestionWrapper.defaultProps = {
-	allowEmptyValues: false,
 };

@@ -21,9 +21,13 @@
 	.googlesitekit-survey {
 		background-color: $c-white;
 		border-radius: 8px;
+
 		// The following is the same shadow used by surveys in
 		// other Google services so we're using the same style here.
-		box-shadow: rgb(0 0 0 / 14%) 0 16px 24px 2px, rgb(0 0 0 / 12%) 0 6px 30px 5px, rgb(0 0 0 / 20%) 0 8px 10px -5px;
+		box-shadow:
+			rgb(0 0 0 / 14%) 0 16px 24px 2px,
+			rgb(0 0 0 / 12%) 0 6px 30px 5px,
+			rgb(0 0 0 / 20%) 0 8px 10px -5px;
 		max-width: 400px;
 
 		@media (max-width: $bp-xsmallOnly) {
@@ -62,10 +66,11 @@
 		}
 
 		p {
-			border-top: 1px solid $c-iron;
-			color: $c-boulder;
+			border-top: 1px solid $c-utility-divider;
+			color: $c-surfaces-on-surface-variant;
 			font-family: $f-primary;
-			font-size: 0.75rem;
+			font-size: $fs-body-sm;
+			letter-spacing: $ls-xs;
 			margin: 12px 0 0;
 			padding-top: 12px;
 			text-align: left;
@@ -78,21 +83,21 @@
 			@media (min-width: $bp-desktop) {
 				margin: 0 0 -12px;
 			}
+		}
 
-			.googlesitekit-cta-link--external {
-				background: none;
-				padding-right: 0;
-			}
+		.mdc-button {
+			letter-spacing: 0.25px;
 		}
 	}
 
 	.googlesitekit-survey__choice {
 
 		p {
-			color: $c-boulder;
+			color: $c-surfaces-on-surface-variant;
 			font-family: $f-primary;
-			font-size: 0.75rem;
-			line-height: 1.16;
+			font-size: $fs-body-sm;
+			letter-spacing: $ls-xs;
+			line-height: $lh-body-sm;
 			margin: 6px 0 0;
 		}
 
@@ -125,7 +130,7 @@
 			}
 		}
 
-		&:not(:first-child):not(:last-child) {
+		&:not(:first-child, :last-child) {
 
 			p {
 				display: none;
@@ -146,6 +151,44 @@
 			&:hover,
 			&:focus {
 				background-color: $c-gallery;
+			}
+		}
+	}
+
+	.googlesitekit-survey__multi-select {
+
+		.googlesitekit-survey__body {
+			padding: $grid-gap-phone;
+
+			@media (min-width: $bp-desktop) {
+				padding: $grid-gap-phone $grid-gap-desktop;
+			}
+		}
+
+		.googlesitekit-survey__multi-select__choice {
+			align-items: center;
+			display: flex;
+			flex-wrap: wrap;
+
+			.mdc-text-field {
+				flex-grow: 1;
+				height: 35px;
+				margin-left: 10px;
+				width: auto;
+
+				.mdc-text-field__input {
+					background: transparent;
+					font-size: $fs-body-sm;
+					letter-spacing: $ls-xs;
+				}
+			}
+		}
+
+		.googlesitekit-survey__multi-select__choice--disabled {
+			opacity: 0.25;
+
+			:hover {
+				cursor: default;
 			}
 		}
 	}

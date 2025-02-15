@@ -21,39 +21,123 @@
  */
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
-import { useParams } from 'react-router-dom';
+import { useHistory, useParams } from 'react-router-dom';
 
 /**
  * WordPress dependencies
  */
+import { useCallback, useRef } from '@wordpress/element';
+import { ESCAPE, ENTER } from '@wordpress/keycodes';
 import { __, sprintf } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
+import { Button } from 'googlesitekit-components';
 import { CORE_MODULES } from '../../../googlesitekit/modules/datastore/constants';
+import { NEW_MODULES, BETA_MODULES, EXPERIMENTAL_MODULES } from '../constants';
 import { Grid, Row, Cell } from '../../../material-components';
-import Link from '../../Link';
+import { useKeyCodesInside } from '../../../hooks/useKeyCodesInside';
 import ModuleIcon from '../../ModuleIcon';
-const { useSelect } = Data;
+import Badge from '../../Badge';
+import NewBadge from '../../NewBadge';
+import { trackEvent } from '../../../util';
+import useViewContext from '../../../hooks/useViewContext';
+import ConnectedIcon from '../../../../svg/icons/connected.svg';
+import WarningIcon from '../../../../svg/icons/warning-v2.svg';
+import ChevronDown from '../../../../svg/icons/chevron-down-v2.svg';
+import IconWrapper from '../../IconWrapper';
 
 export default function Header( { slug } ) {
+	const viewContext = useViewContext();
+	const history = useHistory();
+	const headerRef = useRef();
+
 	const { moduleSlug } = useParams();
 	const isOpen = moduleSlug === slug;
 
+	const storeName = useSelect( ( select ) =>
+		select( CORE_MODULES ).getModuleStoreName( slug )
+	);
+	const adminReauthURL = useSelect( ( select ) =>
+		select( storeName )?.getAdminReauthURL?.()
+	);
 	const module = useSelect( ( select ) =>
 		select( CORE_MODULES ).getModule( slug )
 	);
+	const requirementsError = useSelect( ( select ) =>
+		select( CORE_MODULES )?.getCheckRequirementsError( slug )
+	);
+
+	const openHeader = useCallback( () => {
+		if ( isOpen ) {
+			return;
+		}
+
+		history.push( `/connected-services/${ slug }` );
+		trackEvent(
+			`${ viewContext }_module-list`,
+			'view_module_settings',
+			slug
+		);
+	}, [ history, slug, viewContext, isOpen ] );
+
+	const closeHeader = useCallback( () => {
+		if ( ! isOpen ) {
+			return;
+		}
+
+		history.push( '/connected-services' );
+		trackEvent(
+			`${ viewContext }_module-list`,
+			'close_module_settings',
+			slug
+		);
+	}, [ history, slug, viewContext, isOpen ] );
+
+	const onActionClick = useCallback(
+		( event ) => event.stopPropagation(),
+		[]
+	);
+
+	useKeyCodesInside(
+		[ ENTER ],
+		headerRef,
+		isOpen ? closeHeader : openHeader
+	);
+	useKeyCodesInside( [ ESCAPE ], headerRef, closeHeader );
+
+	const { name, connected } = module;
 
 	if ( ! module ) {
 		return null;
 	}
 
-	const { name, connected } = module;
+	let moduleStatus = null;
+
+	if ( connected ) {
+		moduleStatus = <p>{ __( 'Connected', 'google-site-kit' ) }</p>;
+	} else {
+		moduleStatus = (
+			<Button
+				href={ adminReauthURL }
+				onClick={ onActionClick }
+				disabled={ requirementsError ? true : false }
+				inverse
+			>
+				{ sprintf(
+					/* translators: %s: module name. */
+					__( 'Complete setup for %s', 'google-site-kit' ),
+					name
+				) }
+			</Button>
+		);
+	}
 
 	return (
-		<Link
+		// eslint-disable-next-line jsx-a11y/click-events-have-key-events
+		<div
 			className={ classnames( 'googlesitekit-settings-module__header', {
 				'googlesitekit-settings-module__header--open': isOpen,
 			} ) }
@@ -64,60 +148,99 @@ export default function Header( { slug } ) {
 			aria-expanded={ isOpen }
 			aria-controls={ `googlesitekit-settings-module__content--${ slug }` }
 			to={ `/connected-services${ isOpen ? '' : `/${ slug }` }` }
+			onClick={ isOpen ? closeHeader : openHeader }
+			ref={ headerRef }
+			tabIndex="0"
 		>
 			<Grid>
 				<Row>
-					<Cell lgSize={ 6 } mdSize={ 4 } smSize={ 4 }>
+					<Cell
+						lgSize={ 6 }
+						mdSize={ 4 }
+						smSize={ 4 }
+						className="googlesitekit-settings-module__heading"
+					>
+						<ModuleIcon
+							slug={ slug }
+							size={ 40 }
+							className="googlesitekit-settings-module__heading-icon"
+						/>
+
 						<h3 className="googlesitekit-heading-4 googlesitekit-settings-module__title">
-							<ModuleIcon
-								slug={ slug }
-								size={ 24 }
-								className="googlesitekit-settings-module__title-icon"
-							/>
 							{ name }
 						</h3>
+
+						<div className="googlesitekit-settings-module__heading-badges">
+							{ EXPERIMENTAL_MODULES.includes( slug ) && (
+								<Badge
+									label={ __(
+										'Experimental',
+										'google-site-kit'
+									) }
+									hasLeftSpacing
+								/>
+							) }
+							{ BETA_MODULES.includes( slug ) && (
+								<Badge
+									className="googlesitekit-badge--beta"
+									label={ __( 'Beta', 'google-site-kit' ) }
+									hasLeftSpacing
+								/>
+							) }
+							{ NEW_MODULES.includes( slug ) && (
+								<NewBadge hasLeftSpacing />
+							) }
+						</div>
 					</Cell>
 
 					<Cell
-						className="mdc-layout-grid__cell--align-right-tablet"
 						lgSize={ 6 }
 						mdSize={ 4 }
 						smSize={ 4 }
 						alignMiddle
+						mdAlignRight
 					>
-						<p className="googlesitekit-settings-module__status">
-							{ connected
-								? sprintf(
-										/* translators: %s: module name. */
-										__(
-											'%s is connected',
-											'google-site-kit'
-										),
-										name
-								  )
-								: sprintf(
-										/* translators: %s: module name. */
-										__(
-											'%s is not connected',
-											'google-site-kit'
-										),
-										name
-								  ) }
-
+						<div
+							className={ classnames(
+								'googlesitekit-settings-module__status',
+								{
+									'googlesitekit-settings-module__status--connected':
+										connected,
+									'googlesitekit-settings-module__status--not-connected':
+										! connected,
+								}
+							) }
+						>
+							{ moduleStatus }
 							<span
 								className={ classnames(
 									'googlesitekit-settings-module__status-icon',
 									{
-										'googlesitekit-settings-module__status-icon--connected': connected,
-										'googlesitekit-settings-module__status-icon--not-connected': ! connected,
+										'googlesitekit-settings-module__status-icon--connected':
+											connected,
+										'googlesitekit-settings-module__status-icon--not-connected':
+											! connected,
 									}
 								) }
-							/>
-						</p>
+							>
+								{ connected ? (
+									<ConnectedIcon width={ 10 } height={ 8 } />
+								) : (
+									<WarningIcon width={ 19 } height={ 17 } />
+								) }
+							</span>
+						</div>
 					</Cell>
 				</Row>
 			</Grid>
-		</Link>
+			<IconWrapper>
+				<ChevronDown
+					width={ 12 }
+					height={ 8 }
+					className="icon-chevron-down"
+				/>
+			</IconWrapper>
+		</div>
 	);
 }
 

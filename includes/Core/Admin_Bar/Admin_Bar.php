@@ -14,7 +14,9 @@ use Google\Site_Kit\Context;
 use Google\Site_Kit\Core\Modules\Modules;
 use Google\Site_Kit\Core\Permissions\Permissions;
 use Google\Site_Kit\Core\Assets\Assets;
+use Google\Site_Kit\Core\Authentication\Authentication;
 use Google\Site_Kit\Core\REST_API\REST_Route;
+use Google\Site_Kit\Core\REST_API\REST_Routes;
 use Google\Site_Kit\Core\Storage\Options;
 use Google\Site_Kit\Core\Util\Method_Proxy_Trait;
 use Google\Site_Kit\Core\Util\Requires_Javascript_Trait;
@@ -30,7 +32,8 @@ use WP_REST_Request;
  */
 final class Admin_Bar {
 
-	use Requires_Javascript_Trait, Method_Proxy_Trait;
+	use Requires_Javascript_Trait;
+	use Method_Proxy_Trait;
 
 	/**
 	 * Plugin context.
@@ -59,10 +62,18 @@ final class Admin_Bar {
 	/**
 	 * Admin_Bar_Enabled instance.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 * @var Admin_Bar_Enabled
 	 */
 	private $admin_bar_enabled;
+
+	/**
+	 * Authentication instance.
+	 *
+	 * @since 1.120.0
+	 * @var Authentication
+	 */
+	private $authentication;
 
 	/**
 	 * Constructor.
@@ -84,6 +95,7 @@ final class Admin_Bar {
 
 		$options                 = new Options( $this->context );
 		$this->admin_bar_enabled = new Admin_Bar_Enabled( $options );
+		$this->authentication    = new Authentication( $this->context );
 	}
 
 	/**
@@ -100,8 +112,20 @@ final class Admin_Bar {
 		add_filter( 'amp_dev_mode_element_xpaths', array( $this, 'add_amp_dev_mode' ) );
 		add_filter(
 			'googlesitekit_rest_routes',
-			function( $routes ) {
+			function ( $routes ) {
 				return array_merge( $routes, $this->get_rest_routes() );
+			}
+		);
+
+		add_filter(
+			'googlesitekit_apifetch_preload_paths',
+			function ( $routes ) {
+				return array_merge(
+					$routes,
+					array(
+						'/' . REST_Routes::REST_ROOT . '/core/site/data/admin-bar-settings',
+					)
+				);
 			}
 		);
 
@@ -174,6 +198,10 @@ final class Admin_Bar {
 			return false;
 		}
 
+		if ( ! current_user_can( Permissions::VIEW_ADMIN_BAR_MENU ) ) {
+			return false;
+		}
+
 		$enabled = $this->admin_bar_enabled->get();
 		if ( ! $enabled ) {
 			return false;
@@ -189,11 +217,6 @@ final class Admin_Bar {
 		if ( in_array( $entity->get_type(), array( 'post', 'blog' ), true ) && $entity->get_id() ) {
 			// If a post entity, check permissions for that post.
 			if ( ! current_user_can( Permissions::VIEW_POST_INSIGHTS, $entity->get_id() ) ) {
-				return false;
-			}
-		} else {
-			// Otherwise use more general permission check (typically admin-only).
-			if ( ! current_user_can( Permissions::VIEW_DASHBOARD ) ) {
 				return false;
 			}
 		}
@@ -247,6 +270,7 @@ final class Admin_Bar {
 	 * This is only relevant if the current context is AMP.
 	 *
 	 * @since 1.1.0
+	 * @since 1.120.0 Added the `data-view-only` attribute.
 	 *
 	 * @return bool True if AMP dev mode is enabled, false otherwise.
 	 */
@@ -263,11 +287,13 @@ final class Admin_Bar {
 		// Start buffer output.
 		ob_start();
 
+		$is_view_only = ! $this->authentication->is_authenticated();
+
 		?>
 		<div class="googlesitekit-plugin ab-sub-wrapper">
 			<?php $this->render_noscript_html(); ?>
 
-			<div id="js-googlesitekit-adminbar" class="googlesitekit-adminbar">
+			<div id="js-googlesitekit-adminbar" data-view-only="<?php echo esc_attr( $is_view_only ); ?>" class="googlesitekit-adminbar">
 
 				<?php
 				/**
@@ -301,15 +327,12 @@ final class Admin_Bar {
 	/**
 	 * Enqueues assets.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 */
 	private function enqueue_assets() {
 		if ( ! $this->is_active() ) {
 			return;
 		}
-
-		// Enqueue fonts.
-		$this->assets->enqueue_fonts();
 
 		// Enqueue styles.
 		$this->assets->enqueue_asset( 'googlesitekit-adminbar-css' );
@@ -327,16 +350,16 @@ final class Admin_Bar {
 	/**
 	 * Gets related REST routes.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @return array List of REST_Route objects.
 	 */
 	private function get_rest_routes() {
-		$can_authenticate = function() {
+		$can_authenticate = function () {
 			return current_user_can( Permissions::AUTHENTICATE );
 		};
 
-		$settings_callback = function() {
+		$settings_callback = function () {
 			return array(
 				'enabled' => $this->admin_bar_enabled->get(),
 			);
@@ -353,7 +376,7 @@ final class Admin_Bar {
 					),
 					array(
 						'methods'             => WP_REST_Server::CREATABLE,
-						'callback'            => function( WP_REST_Request $request ) use ( $settings_callback ) {
+						'callback'            => function ( WP_REST_Request $request ) use ( $settings_callback ) {
 							$data    = $request->get_param( 'data' );
 
 							if ( isset( $data['enabled'] ) ) {
@@ -380,5 +403,4 @@ final class Admin_Bar {
 			),
 		);
 	}
-
 }

@@ -23,7 +23,6 @@ import API from 'googlesitekit-api';
 import {
 	createTestRegistry,
 	untilResolved,
-	unsubscribeFromAll,
 } from '../../../../../tests/js/utils';
 import { MODULES_SEARCH_CONSOLE } from './constants';
 import * as fixtures from './__fixtures__';
@@ -39,17 +38,15 @@ describe( 'modules/search-console properties', () => {
 		registry = createTestRegistry();
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	afterAll( () => {
 		API.setUsingCache( true );
 	} );
 
 	describe( 'selectors', () => {
 		describe( 'getMatchedProperties', () => {
-			const endpoint = /^\/google-site-kit\/v1\/modules\/search-console\/data\/matched-sites/;
+			const endpoint = new RegExp(
+				'^/google-site-kit/v1/modules/search-console/data/matched-sites'
+			);
 
 			it( 'uses a resolver to make a network request', async () => {
 				fetchMock.getOnce( endpoint, {

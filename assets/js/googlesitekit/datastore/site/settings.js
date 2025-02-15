@@ -25,14 +25,17 @@ import invariant from 'invariant';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	commonActions,
+	createRegistrySelector,
+	combineStores,
+} from 'googlesitekit-data';
 import { CORE_SITE } from './constants';
 import { createFetchStore } from '../../data/create-fetch-store';
-const { commonActions, combineStores, createRegistrySelector } = Data;
 
 const fetchGetAdminBarSettingsStore = createFetchStore( {
 	baseName: 'getAdminBarSettings',
-	controlCallback: async () =>
+	controlCallback: () =>
 		API.get( 'core', 'site', 'admin-bar-settings', undefined, {
 			useCache: false,
 		} ),
@@ -79,18 +82,16 @@ const baseActions = {
 	/**
 	 * Sets showAdminBar setting.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param {boolean} enabled Whether to show or hide the admin bar.
 	 * @return {Object} Object with `response` and `error`.
 	 */
 	*setShowAdminBar( enabled ) {
-		const {
-			response,
-			error,
-		} = yield fetchSetAdminBarSettingsStore.actions.fetchSetAdminBarSettings(
-			{ enabled }
-		);
+		const { response, error } =
+			yield fetchSetAdminBarSettingsStore.actions.fetchSetAdminBarSettings(
+				{ enabled }
+			);
 		return { response, error };
 	},
 };
@@ -119,7 +120,7 @@ const baseSelectors = {
 	/**
 	 * Gets admin bar settings.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param {Object} state Data store's state.
 	 * @return {boolean} Admin bar setting if they have been already resolved, otherwise undefined.
@@ -131,7 +132,7 @@ const baseSelectors = {
 	/**
 	 * Gets showAdminBar setting.
 	 *
-	 * @since n.e.x.t
+	 * @since 1.39.0
 	 *
 	 * @param {Object} state Data store's state.
 	 * @return {boolean} The showAdminBar setting if it has been already resolved, otherwise undefined.

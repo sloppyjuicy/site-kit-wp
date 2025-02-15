@@ -17,6 +17,11 @@
  */
 
 /**
+ * WordPress dependencies
+ */
+import { createRegistrySelector } from '@wordpress/data';
+
+/**
  * External dependencies
  */
 import invariant from 'invariant';
@@ -43,14 +48,10 @@ export function generateErrorKey( baseName, args ) {
 }
 
 export const actions = {
-	receiveError( error, baseName, args ) {
+	receiveError( error, baseName, args = [] ) {
 		invariant( error, 'error is required.' );
-		if ( baseName ) {
-			invariant(
-				args && Array.isArray( args ),
-				'args is required (and must be an array) when baseName is specified.'
-			);
-		}
+		invariant( baseName, 'baseName is required.' );
+		invariant( args && Array.isArray( args ), 'args must be an array.' );
 
 		return {
 			type: RECEIVE_ERROR,
@@ -61,13 +62,11 @@ export const actions = {
 			},
 		};
 	},
-	clearError( baseName, args ) {
-		if ( baseName ) {
-			invariant(
-				args && Array.isArray( args ),
-				'args is required (and must be an array) when baseName is specified.'
-			);
-		}
+
+	clearError( baseName, args = [] ) {
+		invariant( baseName, 'baseName is required.' );
+
+		invariant( args && Array.isArray( args ), 'args must be an array.' );
 
 		return {
 			type: CLEAR_ERROR,
@@ -87,10 +86,12 @@ export const actions = {
 	},
 };
 
-export function createErrorStore() {
+export function createErrorStore( storeName ) {
+	invariant( storeName, 'storeName must be defined.' );
+
 	const initialState = {
 		errors: {},
-		error: undefined,
+		errorArgs: {},
 	};
 
 	function reducer( state, { type, payload } ) {
@@ -98,31 +99,29 @@ export function createErrorStore() {
 			case RECEIVE_ERROR: {
 				const { baseName, args, error } = payload;
 
-				if ( baseName ) {
-					return {
-						...state,
-						errors: {
-							...( state.errors || {} ),
-							[ generateErrorKey( baseName, args ) ]: error,
-						},
-					};
-				}
-
-				// @TODO: remove once all instances of the legacy behavior have been removed.
-				return { ...state, error };
+				const key = generateErrorKey( baseName, args );
+				return {
+					...state,
+					errors: {
+						...( state.errors || {} ),
+						[ key ]: error,
+					},
+					errorArgs: {
+						...( state.errorArgs || {} ),
+						[ key ]: args,
+					},
+				};
 			}
 
 			case CLEAR_ERROR: {
 				const { baseName, args } = payload;
 				const newState = { ...state };
-				if ( baseName ) {
-					const key = generateErrorKey( baseName, args );
-					newState.errors = { ...( state.errors || {} ) };
-					delete newState.errors[ key ];
-				} else {
-					// @TODO: remove it once all instances of the legacy behavior have been removed.
-					newState.error = undefined;
-				}
+				const key = generateErrorKey( baseName, args );
+				newState.errors = { ...( state.errors || {} ) };
+				newState.errorArgs = { ...( state.errorArgs || {} ) };
+
+				delete newState.errors[ key ];
+				delete newState.errorArgs[ key ];
 
 				return newState;
 			}
@@ -132,18 +131,19 @@ export function createErrorStore() {
 				const newState = { ...state };
 				if ( baseName ) {
 					newState.errors = { ...( state.errors || {} ) };
+					newState.errorArgs = { ...( state.errorArgs || {} ) };
 					for ( const key in newState.errors ) {
 						if (
 							key === baseName ||
 							key.startsWith( `${ baseName }::` )
 						) {
 							delete newState.errors[ key ];
+							delete newState.errorArgs[ key ];
 						}
 					}
 				} else {
 					newState.errors = {};
-					// @TODO: remove it once all instances of the legacy behavior have been removed.
-					newState.error = undefined;
+					newState.errorArgs = {};
 				}
 				return newState;
 			}
@@ -227,12 +227,7 @@ export function createErrorStore() {
 		 * @return {(Object|undefined)} Error object if exists, otherwise undefined.
 		 */
 		getError( state, baseName, args ) {
-			const { error, errors } = state;
-
-			// @TODO: remove it once all instances of the legacy usage have been removed. Also make baseName required then.
-			if ( ! baseName && ! args ) {
-				return error;
-			}
+			const { errors } = state;
 
 			invariant( baseName, 'baseName is required.' );
 
@@ -250,13 +245,85 @@ export function createErrorStore() {
 		getErrors( state ) {
 			const errorsSet = new Set( Object.values( state.errors ) );
 
-			// @TODO: remove it once all instances of the legacy usage have been removed.
-			if ( undefined !== state.error ) {
-				errorsSet.add( state.error );
-			}
-
 			return Array.from( errorsSet );
 		},
+
+		/**
+		 * Gets the meta-data for a given error object, or null if the error is not found.
+		 *
+		 * Returns meta-data in the format:
+		 *
+		 * ```
+		 *	{
+		 *		baseName: <string>,
+		 *		args: <Array>
+		 *	}
+		 * ```
+		 *
+		 * @since 1.84.0
+		 *
+		 * @param {Object} state Data store's state.
+		 * @param {Object} error Error object.
+		 * @return {Object|null} Meta-data for the given error object, or null if the error is not found.
+		 */
+		getMetaDataForError( state, error ) {
+			const key = Object.keys( state.errors ).find(
+				( errorKey ) => state.errors[ errorKey ] === error
+			);
+
+			if ( key ) {
+				const baseName = key.substring( 0, key.indexOf( '::' ) );
+				return {
+					baseName,
+					args: state.errorArgs[ key ],
+				};
+			}
+
+			return null;
+		},
+
+		/**
+		 * Gets the selector data for a given error object, or null if no selector data is available.
+		 *
+		 * Returns selector data in the format:
+		 *
+		 * ```
+		 *	{
+		 *		storeName: <string>,
+		 *		name: <string>,
+		 *		args: <Array>
+		 *	}
+		 * ```
+		 *
+		 * @since 1.87.0
+		 *
+		 * @param {Object} state Data store's state.
+		 * @param {Object} error Error object.
+		 * @return {Object|null} Selector data for the given error object, or null if no selector data is available.
+		 */
+		getSelectorDataForError: createRegistrySelector(
+			( select ) =>
+				function ( state, error ) {
+					const metaData =
+						select( storeName ).getMetaDataForError( error );
+
+					if ( metaData ) {
+						const { baseName: name, args } = metaData;
+
+						const isSelector = !! select( storeName )[ name ];
+
+						if ( isSelector ) {
+							return {
+								storeName,
+								name,
+								args,
+							};
+						}
+					}
+
+					return null;
+				}
+		),
 
 		/**
 		 * Determines whether the datastore has errors or not.

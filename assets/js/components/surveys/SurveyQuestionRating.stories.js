@@ -21,11 +21,13 @@
  */
 import SurveyQuestionRating from './SurveyQuestionRating';
 
-const Template = ( args ) => (
-	<div className="googlesitekit-survey">
-		<SurveyQuestionRating { ...args } />
-	</div>
-);
+function Template( args ) {
+	return (
+		<div className="googlesitekit-survey">
+			<SurveyQuestionRating { ...args } />
+		</div>
+	);
+}
 
 export const SurveyQuestionRatingStory = Template.bind( {} );
 SurveyQuestionRatingStory.storyName = 'SurveyQuestionRating';
@@ -60,8 +62,4 @@ SurveyQuestionRatingStory.args = {
 	dismissSurvey: () => {
 		global.console.log( 'Dismissed Survey' );
 	},
-};
-
-export default {
-	title: 'Components/Surveys',
 };

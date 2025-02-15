@@ -32,23 +32,28 @@ import {
 	createTestRegistry,
 	provideModules,
 	act,
+	provideUserAuthentication,
 } from '../../../../../tests/js/test-utils';
 import { CORE_MODULES } from '../../../googlesitekit/modules/datastore/constants';
+import { MODULES_TAGMANAGER } from '../../../modules/tagmanager/datastore/constants';
+import { MODULES_ANALYTICS_4 } from '../../../modules/analytics-4/datastore/constants';
 
 describe( 'SettingsModule', () => {
-	const SettingsModuleWithWrapper = ( { slug = 'analytics' } ) => (
-		<Switch>
-			<Route
-				path={ [
-					'/connected-services/:moduleSlug/:action',
-					'/connected-services/:moduleSlug',
-					'/connected-services',
-				] }
-			>
-				<SettingsActiveModule slug={ slug } />
-			</Route>
-		</Switch>
-	);
+	function SettingsModuleWithWrapper( { slug = 'analytics-4' } ) {
+		return (
+			<Switch>
+				<Route
+					path={ [
+						'/connected-services/:moduleSlug/:action',
+						'/connected-services/:moduleSlug',
+						'/connected-services',
+					] }
+				>
+					<SettingsActiveModule slug={ slug } />
+				</Route>
+			</Switch>
+		);
+	}
 
 	// Create hash history to interact with HashRouter using `history.push`
 	const history = createHashHistory();
@@ -60,23 +65,24 @@ describe( 'SettingsModule', () => {
 
 		provideModules( registry, [
 			{
-				slug: 'analytics',
+				slug: 'analytics-4',
 				active: true,
 				connected: true,
-				SettingsEditComponent: () => (
-					<div data-testid="edit-component">edit</div>
-				),
-				SettingsViewComponent: () => (
-					<div data-testid="view-component">view</div>
-				),
+				storeName: MODULES_ANALYTICS_4,
+				SettingsEditComponent() {
+					return <div data-testid="edit-component">edit</div>;
+				},
+				SettingsViewComponent() {
+					return <div data-testid="view-component">view</div>;
+				},
 			},
 			{
 				slug: 'pagespeed-insights',
 				active: true,
 				connected: true,
-				SettingsViewComponent: () => (
-					<div data-testid="view-component">view</div>
-				),
+				SettingsViewComponent() {
+					return <div data-testid="view-component">view</div>;
+				},
 				// SettingsEditComponent is intentionally `null` here for no-edit-component tests below.
 				SettingsEditComponent: null,
 			},
@@ -85,18 +91,22 @@ describe( 'SettingsModule', () => {
 				active: true,
 				// Intentionally not connected here with both settings components for tests below.
 				connected: false,
-				SettingsEditComponent: () => (
-					<div data-testid="edit-component">edit</div>
-				),
-				SettingsViewComponent: () => (
-					<div data-testid="view-component">view</div>
-				),
+				storeName: MODULES_TAGMANAGER,
+				SettingsEditComponent() {
+					return <div data-testid="edit-component">edit</div>;
+				},
+				SettingsViewComponent() {
+					return <div data-testid="view-component">view</div>;
+				},
 			},
 		] );
+		provideUserAuthentication( registry );
+		registry.dispatch( MODULES_ANALYTICS_4 ).receiveGetSettings( {} );
+		registry.dispatch( MODULES_TAGMANAGER ).receiveGetSettings( {} );
 	} );
 
-	it( 'should display SettingsViewComponent when on module view route', async () => {
-		history.push( '/connected-services/analytics' );
+	it( 'should display SettingsViewComponent when on module view route', () => {
+		history.push( '/connected-services/analytics-4' );
 
 		const { queryByTestID } = render( <SettingsModuleWithWrapper />, {
 			history,
@@ -106,8 +116,8 @@ describe( 'SettingsModule', () => {
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 	} );
 
-	it( 'should display SettingsEditComponent when on module edit route', async () => {
-		history.push( '/connected-services/analytics/edit' );
+	it( 'should display SettingsEditComponent when on module edit route', () => {
+		history.push( '/connected-services/analytics-4/edit' );
 
 		const { queryByTestID } = render( <SettingsModuleWithWrapper />, {
 			history,
@@ -132,34 +142,36 @@ describe( 'SettingsModule', () => {
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 	} );
 
-	it( 'should change route when "Edit" link is clicked and switch to SettingsEditComponent', async () => {
-		history.push( '/connected-services/analytics' );
+	it( 'should change route when "Edit" link is clicked and switch to SettingsEditComponent', () => {
+		history.push( '/connected-services/analytics-4' );
 
-		const {
-			getByRole,
-			queryByTestID,
-		} = render( <SettingsModuleWithWrapper />, { history, registry } );
+		const { getByRole, queryByTestID } = render(
+			<SettingsModuleWithWrapper />,
+			{ history, registry }
+		);
 
 		fireEvent.click( getByRole( 'link', { name: /edit/i } ) );
 
 		expect( global.location.hash ).toEqual(
-			'#/connected-services/analytics/edit'
+			'#/connected-services/analytics-4/edit'
 		);
 		expect( queryByTestID( 'edit-component' ) ).toBeInTheDocument();
 	} );
 
 	it( 'should change route when "Cancel" link is clicked and switch to SettingsViewComponent', async () => {
-		history.push( '/connected-services/analytics/edit' );
+		history.push( '/connected-services/analytics-4/edit' );
 
-		const {
-			getByRole,
-			queryByTestID,
-		} = render( <SettingsModuleWithWrapper />, { history, registry } );
+		const { getByRole, queryByTestID, findByTestID } = render(
+			<SettingsModuleWithWrapper />,
+			{ history, registry }
+		);
 
-		fireEvent.click( getByRole( 'link', { name: /cancel/i } ) );
+		fireEvent.click( getByRole( 'button', { name: /cancel/i } ) );
+
+		await findByTestID( 'view-component' );
 
 		expect( global.location.hash ).toEqual(
-			'#/connected-services/analytics'
+			'#/connected-services/analytics-4'
 		);
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 	} );
@@ -167,7 +179,7 @@ describe( 'SettingsModule', () => {
 	it( 'should change route when "Close" button is clicked and continue rendering SettingsViewComponent when module has no SettingsEditComponent', async () => {
 		history.push( '/connected-services/pagespeed-insights/edit' );
 
-		const { getByRole, queryByTestID } = render(
+		const { getByRole, queryByTestID, findByTestID } = render(
 			<SettingsModuleWithWrapper slug="pagespeed-insights" />,
 			{
 				history,
@@ -177,34 +189,36 @@ describe( 'SettingsModule', () => {
 
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 		fireEvent.click( getByRole( 'button', { name: /close/i } ) );
+		await findByTestID( 'view-component' );
+
 		expect( global.location.hash ).toEqual(
 			'#/connected-services/pagespeed-insights'
 		);
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 	} );
 
-	it( 'should open accordion on click and change route and DOM correctly', async () => {
+	it( 'should open accordion on click and change route and DOM correctly', () => {
 		history.push( '/connected-services' );
 
-		const {
-			getByRole,
-			queryByTestID,
-		} = render( <SettingsModuleWithWrapper />, { history, registry } );
+		const { getByRole, queryByTestID } = render(
+			<SettingsModuleWithWrapper />,
+			{ history, registry }
+		);
 
 		fireEvent.click( getByRole( 'tab' ) );
 		expect( global.location.hash ).toEqual(
-			'#/connected-services/analytics'
+			'#/connected-services/analytics-4'
 		);
 		expect( queryByTestID( 'view-component' ) ).toBeInTheDocument();
 	} );
 
-	it( 'should close accordion on click and change route & DOM correctly', async () => {
-		history.push( '/connected-services/analytics' );
+	it( 'should close accordion on click and change route & DOM correctly', () => {
+		history.push( '/connected-services/analytics-4' );
 
-		const {
-			getByRole,
-			queryByTestID,
-		} = render( <SettingsModuleWithWrapper />, { history, registry } );
+		const { getByRole, queryByTestID } = render(
+			<SettingsModuleWithWrapper />,
+			{ history, registry }
+		);
 
 		fireEvent.click( getByRole( 'tab' ) );
 		expect( global.location.hash ).toEqual( '#/connected-services' );
@@ -212,7 +226,7 @@ describe( 'SettingsModule', () => {
 	} );
 
 	it( 'should render a submit button when editing a connected module with settings', () => {
-		history.push( '/connected-services/analytics/edit' );
+		history.push( '/connected-services/analytics-4/edit' );
 
 		const { queryByRole } = render( <SettingsModuleWithWrapper />, {
 			history,
@@ -220,7 +234,7 @@ describe( 'SettingsModule', () => {
 		} );
 
 		expect(
-			queryByRole( 'button', { name: /confirm changes/i } )
+			queryByRole( 'button', { name: /save/i } )
 		).toBeInTheDocument();
 		expect(
 			queryByRole( 'button', { name: /close/i } )
@@ -233,7 +247,7 @@ describe( 'SettingsModule', () => {
 		// Hack to avoid act error due to state change during render.
 		await act( () =>
 			registry
-				.__experimentalResolveSelect( CORE_MODULES )
+				.resolveSelect( CORE_MODULES )
 				.canActivateModule( 'tagmanager' )
 		);
 
@@ -246,7 +260,7 @@ describe( 'SettingsModule', () => {
 		);
 
 		expect(
-			queryByRole( 'button', { name: /confirm changes/i } )
+			queryByRole( 'button', { name: /save/i } )
 		).not.toBeInTheDocument();
 		expect(
 			queryByRole( 'button', { name: /close/i } )

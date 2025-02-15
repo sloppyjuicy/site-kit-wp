@@ -25,13 +25,15 @@ import { __, sprintf } from '@wordpress/i18n';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { Option, ProgressBar, Select } from 'googlesitekit-components';
+import { useSelect, useDispatch } from 'googlesitekit-data';
 import { MODULES_SEARCH_CONSOLE } from '../../datastore/constants';
-import ProgressBar from '../../../../components/ProgressBar';
-import { Select, Option } from '../../../../material-components';
-const { useSelect, useDispatch } = Data;
+import { trackEvent } from '../../../../util/tracking';
+import useViewContext from '../../../../hooks/useViewContext';
 
-export default function PropertySelect() {
+export default function PropertySelect( { hasModuleAccess } ) {
+	const viewContext = useViewContext();
+
 	const propertyID = useSelect( ( select ) =>
 		select( MODULES_SEARCH_CONSOLE ).getPropertyID()
 	);
@@ -50,13 +52,33 @@ export default function PropertySelect() {
 			const newPropertyID = item.dataset.value;
 			if ( propertyID !== newPropertyID ) {
 				setPropertyID( newPropertyID );
+
+				trackEvent(
+					`${ viewContext }_search-console`,
+					'change_property'
+				);
 			}
 		},
-		[ propertyID, setPropertyID ]
+		[ propertyID, setPropertyID, viewContext ]
 	);
 
 	if ( ! hasResolvedProperties ) {
 		return <ProgressBar small />;
+	}
+
+	if ( hasModuleAccess === false ) {
+		return (
+			<Select
+				className="googlesitekit-search-console__select-property"
+				label={ __( 'Property', 'google-site-kit' ) }
+				value={ propertyID }
+				enhanced
+				outlined
+				disabled
+			>
+				<Option value={ propertyID }>{ propertyID }</Option>
+			</Select>
+		);
 	}
 
 	return (

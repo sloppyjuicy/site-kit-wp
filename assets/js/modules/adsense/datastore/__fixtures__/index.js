@@ -16,13 +16,9 @@
  * limitations under the License.
  */
 
-export { default as accounts } from './accounts';
-export { default as accountsMultiple } from './accounts-multiple';
-export { default as clients } from './clients';
-export { default as clientsNoAFC } from './clients-no-afc';
-export { default as urlchannels } from './urlchannels';
-export { default as adunits } from './adunits';
-export { default as alerts } from './alerts';
-export { default as alertsGraylisted } from './alerts-graylisted';
-export { default as tagPermissionAccess } from './tag-permission-access';
-export { default as tagPermissionNoAccess } from './tag-permission-no-access';
+export { default as accounts } from './accounts.json';
+export { default as accountsMultiple } from './accounts-multiple.json';
+export { default as clients } from './clients.json';
+export { default as clientsNoAFC } from './clients-no-afc.json';
+export { default as adunits } from './adunits.json';
+export { default as sites } from './sites.json';

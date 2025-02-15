@@ -18,7 +18,7 @@ add_filter(
 			'googlesitekit-e2e-api-fetch',
 			array(
 				'src'          => plugins_url( 'dist/assets/js/e2e-api-fetch.js', GOOGLESITEKIT_PLUGIN_MAIN_FILE ),
-				'dependencies' => array( 'googlesitekit-apifetch-data' ),
+				'dependencies' => array( 'googlesitekit-apifetch-data', 'googlesitekit-i18n' ),
 				'version'      => md5_file( plugin_dir_path( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) . 'dist/assets/js/e2e-api-fetch.js' ),
 			)
 		);
@@ -35,12 +35,14 @@ add_filter(
 		return $assets;
 	}
 );
-// Enqueue E2E Utilities globally `wp_print_scripts` is called on admin and front.
+// Enqueue E2E Utilities globally.
 // If asset is not registered enqueuing is a no-op.
-add_action(
-	'wp_print_scripts',
-	function () {
-		wp_enqueue_script( 'googlesitekit-e2e-api-fetch' );
-		wp_enqueue_script( 'googlesitekit-e2e-redux-logger' );
-	}
-);
+$enqueue = function () {
+	wp_enqueue_script( 'googlesitekit-e2e-api-fetch' );
+	wp_enqueue_script( 'googlesitekit-e2e-redux-logger' );
+};
+// Site Kit registers its assets on priority 10 (admin bar on 40).
+// These are hooked after to avoid enqueuing before registered.
+add_action( 'wp_enqueue_scripts', $enqueue, 99 );
+add_action( 'admin_enqueue_scripts', $enqueue, 99 );
+unset( $enqueue );

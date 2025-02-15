@@ -10,6 +10,9 @@
 
 namespace Google\Site_Kit\Tests;
 
+use Google\Site_Kit\Context;
+use Google\Site_Kit\Core\REST_API\REST_Routes;
+use Google\Site_Kit\Core\Storage\Options;
 use Google\Site_Kit\Core\Util\Feature_Flags;
 use Google\Site_Kit\Plugin;
 
@@ -18,6 +21,8 @@ use Google\Site_Kit\Plugin;
  */
 class PluginTest extends TestCase {
 
+	use RestTestTrait;
+
 	/**
 	 * Plugin instance backup.
 	 *
@@ -25,15 +30,16 @@ class PluginTest extends TestCase {
 	 */
 	protected static $backup_instance;
 
-	public static function setUpBeforeClass() {
-		parent::setUpBeforeClass();
+	public static function wpSetUpBeforeClass() {
 		self::$backup_instance = Plugin::instance();
 	}
 
-	public function tearDown() {
-		parent::tearDown();
+	public function tear_down() {
+		parent::tear_down();
 		// Restore the main instance after each test.
 		$this->force_set_property( 'Google\Site_Kit\Plugin', 'instance', self::$backup_instance );
+		// This ensures the REST server is initialized fresh for each test using it.
+		unset( $GLOBALS['wp_rest_server'] );
 	}
 
 	public function test_context() {
@@ -44,13 +50,33 @@ class PluginTest extends TestCase {
 		$this->assertEquals( plugin_dir_path( GOOGLESITEKIT_PLUGIN_MAIN_FILE ), $plugin->context()->path() );
 	}
 
+	// Ensure we're supplying the correct minimum version of PHP
+	// and WordPress in our plugin file's header.
+	public function test_plugin_data() {
+		// RequiresPHP and RequiresWP are only available in WordPress 5.3+,
+		// so only make assertions with those fields if they exist.
+
+		$plugin_data = get_plugin_data( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+
+		if ( array_key_exists( 'RequiresPHP', $plugin_data ) ) {
+			$this->assertEquals( $plugin_data['RequiresPHP'], '7.4' );
+		}
+		if ( array_key_exists( 'RequiresWP', $plugin_data ) ) {
+			$this->assertEquals( $plugin_data['RequiresWP'], '5.2' );
+		}
+
+		// These fields are available in all versions of WordPress we support,
+		// so check for them unconditionally.
+		$this->assertEquals( $plugin_data['Name'], 'Site Kit by Google' );
+	}
+
 	public function test_register() {
 		$plugin = new Plugin( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
 		remove_all_actions( 'init' );
 		remove_all_actions( 'googlesitekit_init' );
 		remove_all_actions( 'wp_head' );
 		remove_all_actions( 'login_head' );
-		$GLOBALS['wp_actions'] = array();
+		unset( $GLOBALS['wp_actions']['googlesitekit_init'] );
 
 		$plugin->register();
 
@@ -67,12 +93,25 @@ class PluginTest extends TestCase {
 		$this->assertEquals( 1, did_action( 'googlesitekit_init' ) );
 	}
 
+	public function test_register__init_keyMetrics() {
+		remove_all_filters( 'googlesitekit_rest_routes' );
+		remove_all_actions( 'init' );
+
+		$plugin = new Plugin( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		$plugin->register();
+		do_action( 'init' );
+		$this->register_rest_routes();
+
+		$routes = rest_get_server()->get_routes();
+		$this->assertArrayHasKey( '/' . REST_Routes::REST_ROOT . '/core/user/data/user-input-settings', $routes );
+	}
+
 	protected function assertActionRendersGeneratorTag( $action ) {
 		ob_start();
 		do_action( $action );
 		$output = ob_get_clean();
 
-		$this->assertContains(
+		$this->assertStringContainsString(
 			'<meta name="generator" content="Site Kit by Google ' . GOOGLESITEKIT_VERSION . '"',
 			$output
 		);
@@ -83,6 +122,10 @@ class PluginTest extends TestCase {
 	 */
 	public function test_network_mode_register() {
 		$this->network_activate_site_kit();
+
+		// Force enable network mode.
+		add_filter( 'googlesitekit_is_network_mode', '__return_true' );
+
 		$plugin = new Plugin( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
 		$this->assertTrue( $plugin->context()->is_network_mode() );
 		remove_all_actions( 'network_admin_notices' );
@@ -94,7 +137,7 @@ class PluginTest extends TestCase {
 		$network_admin_notices = ob_get_clean();
 
 		// Regex is case-insensitive and dotall (s) to match over multiple lines.
-		$this->assertRegExp( '#<div class="notice notice-warning.*?not yet compatible.*?</div>#is', $network_admin_notices );
+		$this->assertMatchesRegularExpression( '#<div class="notice notice-warning.*?not yet offer.*?</div>#is', $network_admin_notices );
 	}
 
 	public function test_load_and_instance() {

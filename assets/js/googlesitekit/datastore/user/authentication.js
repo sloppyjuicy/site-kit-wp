@@ -20,11 +20,13 @@
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
-import Data from 'googlesitekit-data';
+import {
+	commonActions,
+	createRegistrySelector,
+	combineStores,
+} from 'googlesitekit-data';
 import { CORE_USER } from './constants';
 import { createFetchStore } from '../../data/create-fetch-store';
-
-const { createRegistrySelector } = Data;
 
 function createGetAuthenticationSelector( property ) {
 	return createRegistrySelector( ( select ) => () => {
@@ -112,7 +114,7 @@ export const baseReducer = ( state, { type, payload } ) => {
 
 const baseResolvers = {
 	*getAuthentication() {
-		const { select } = yield Data.commonActions.getRegistry();
+		const { select } = yield commonActions.getRegistry();
 
 		if ( ! select( CORE_USER ).getAuthentication() ) {
 			yield fetchGetAuthenticationStore.actions.fetchGetAuthentication();
@@ -218,9 +220,8 @@ const baseSelectors = {
 	 * @param {Object} state Data store's state.
 	 * @return {(Array|undefined)} Array of scopes.
 	 */
-	getUnsatisfiedScopes: createGetAuthenticationSelector(
-		'unsatisfiedScopes'
-	),
+	getUnsatisfiedScopes:
+		createGetAuthenticationSelector( 'unsatisfiedScopes' ),
 
 	/**
 	 * Checks reauthentication status for this user.
@@ -245,8 +246,30 @@ const baseSelectors = {
 	 * @param {Object} state Data store's state.
 	 * @return {(string|undefined)} The current disconnected reason.
 	 */
-	getDisconnectedReason: createGetAuthenticationSelector(
-		'disconnectedReason'
+	getDisconnectedReason:
+		createGetAuthenticationSelector( 'disconnectedReason' ),
+
+	/**
+	 * Gets the connected proxy URL.
+	 *
+	 * @since 1.48.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(string|undefined)} The current connected proxy URL.
+	 */
+	getConnectedProxyURL:
+		createGetAuthenticationSelector( 'connectedProxyURL' ),
+
+	/**
+	 * Gets the previous connected proxy URL.
+	 *
+	 * @since 1.48.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(string|undefined)} The previous connected proxy URL.
+	 */
+	getPreviousConnectedProxyURL: createGetAuthenticationSelector(
+		'previousConnectedProxyURL'
 	),
 
 	/**
@@ -263,7 +286,7 @@ const baseSelectors = {
 	},
 };
 
-const store = Data.combineStores( fetchGetAuthenticationStore, {
+const store = combineStores( fetchGetAuthenticationStore, {
 	initialState: baseInitialState,
 	actions: baseActions,
 	reducer: baseReducer,

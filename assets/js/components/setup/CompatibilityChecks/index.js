@@ -29,10 +29,10 @@ import PropTypes from 'prop-types';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
-const { useRegistry } = Data;
-import Warning from '../../legacy-notifications/warning';
-import ProgressBar from '../../ProgressBar';
+import { useRegistry } from 'googlesitekit-data';
+import { ProgressBar } from 'googlesitekit-components';
+import Warning from '../../../../svg/icons/warning.svg';
+import { Grid } from '../../../material-components';
 import { useChecks } from '../../../hooks/useChecks';
 import CompatibilityErrorNotice from './CompatibilityErrorNotice';
 import { CORE_SITE } from '../../../googlesitekit/datastore/site/constants';
@@ -40,7 +40,6 @@ import {
 	checkAMPConnectivity,
 	checkHealthChecks,
 	checkHostname,
-	checkWPVersion,
 	registryCheckSetupTag,
 } from './checks';
 
@@ -54,7 +53,6 @@ const createCompatibilityChecks = ( registry ) => {
 		checkHealthChecks,
 		registryCheckSetupTag( registry ),
 		checkAMPConnectivity,
-		checkWPVersion,
 	];
 };
 
@@ -65,7 +63,7 @@ export default function CompatibilityChecks( { children, ...props } ) {
 	);
 
 	const ctaFeedback = error && (
-		<div className="googlesitekit-setup-compat mdc-layout-grid mdc-layout-grid--align-left">
+		<Grid alignLeft className="googlesitekit-setup-compat">
 			<div className="googlesitekit-setup__warning">
 				<Warning />
 
@@ -77,7 +75,7 @@ export default function CompatibilityChecks( { children, ...props } ) {
 				</div>
 			</div>
 			<CompatibilityErrorNotice error={ error } />
-		</div>
+		</Grid>
 	);
 
 	const inProgressFeedback = ! complete && (

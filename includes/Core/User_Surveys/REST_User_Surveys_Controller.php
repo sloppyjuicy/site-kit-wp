@@ -12,7 +12,10 @@ namespace Google\Site_Kit\Core\User_Surveys;
 
 use Google\Site_Kit\Core\Authentication\Authentication;
 use Google\Site_Kit\Core\REST_API\REST_Route;
+use Google\Site_Kit\Core\REST_API\REST_Routes;
+use WP_Error;
 use WP_REST_Request;
+use WP_REST_Response;
 use WP_REST_Server;
 
 /**
@@ -33,14 +36,34 @@ class REST_User_Surveys_Controller {
 	protected $authentication;
 
 	/**
+	 * Survey_Timeouts instance.
+	 *
+	 * @since 1.73.0
+	 * @var Survey_Timeouts
+	 */
+	protected $timeouts;
+
+	/**
+	 * Survey_Queue instance.
+	 *
+	 * @since 1.98.0
+	 * @var Survey_Queue
+	 */
+	protected $queue;
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 1.35.0
 	 *
-	 * @param Authentication $authentication Authentication instance.
+	 * @param Authentication  $authentication Authentication instance.
+	 * @param Survey_Timeouts $timeouts       User timeouts setting.
+	 * @param Survey_Queue    $queue          Surveys queue.
 	 */
-	public function __construct( Authentication $authentication ) {
+	public function __construct( Authentication $authentication, Survey_Timeouts $timeouts, Survey_Queue $queue ) {
 		$this->authentication = $authentication;
+		$this->timeouts       = $timeouts;
+		$this->queue          = $queue;
 	}
 
 	/**
@@ -53,6 +76,18 @@ class REST_User_Surveys_Controller {
 			'googlesitekit_rest_routes',
 			function ( $routes ) {
 				return array_merge( $routes, $this->get_rest_routes() );
+			}
+		);
+
+		add_filter(
+			'googlesitekit_apifetch_preload_paths',
+			function ( $paths ) {
+				return array_merge(
+					$paths,
+					array(
+						'/' . REST_Routes::REST_ROOT . '/core/user/data/survey-timeouts',
+					)
+				);
 			}
 		);
 	}
@@ -72,7 +107,7 @@ class REST_User_Surveys_Controller {
 		};
 
 		return array(
-			'survey-trigger' => new REST_Route(
+			'survey-trigger'  => new REST_Route(
 				'core/user/data/survey-trigger',
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
@@ -83,9 +118,20 @@ class REST_User_Surveys_Controller {
 						$data         = $request->get_param( 'data' );
 
 						$response = $proxy->send_survey_trigger( $creds, $access_token, $data['triggerID'] );
-						$response = rest_ensure_response( $response );
 
-						return $response;
+						if ( ! is_wp_error( $response ) && ! empty( $response['survey_id'] ) ) {
+							$this->queue->enqueue( $response );
+						}
+
+						if ( ! is_wp_error( $response ) && ! empty( $data['ttl'] ) ) {
+							$ttl = intval( $data['ttl'] );
+
+							if ( $ttl > 0 ) {
+								$this->timeouts->add( $data['triggerID'], $ttl );
+							}
+						}
+
+						return new WP_REST_Response( array( 'success' => true ) );
 					},
 					'permission_callback' => $can_authenticate,
 					'args'                => array(
@@ -97,12 +143,16 @@ class REST_User_Surveys_Controller {
 									'type'     => 'string',
 									'required' => true,
 								),
+								'ttl'       => array(
+									'type'    => 'integer',
+									'minimum' => 0,
+								),
 							),
 						),
 					),
 				)
 			),
-			'survey-event'   => new REST_Route(
+			'survey-event'    => new REST_Route(
 				'core/user/data/survey-event',
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
@@ -110,12 +160,25 @@ class REST_User_Surveys_Controller {
 						$proxy        = $this->authentication->get_google_proxy();
 						$creds        = $this->authentication->credentials();
 						$access_token = (string) $this->authentication->get_oauth_client()->get_access_token();
-						$data         = $request->get_param( 'data' );
+
+						$data = $request->get_param( 'data' );
+						if ( isset( $data['event']['survey_shown'] ) ) {
+							$this->timeouts->set_global_timeout();
+						}
 
 						$response = $proxy->send_survey_event( $creds, $access_token, $data['session'], $data['event'] );
-						$response = rest_ensure_response( $response );
+						if ( ! is_wp_error( $response ) ) {
+							$is_survey_closed    = isset( $data['event']['survey_closed'] );
+							$is_completion_shown = isset( $data['event']['completion_shown'] );
+							if ( $is_completion_shown || $is_survey_closed ) {
+								$survey = $this->queue->find_by_session( $data['session'] );
+								if ( ! empty( $survey ) ) {
+									$this->queue->dequeue( $survey['survey_id'] );
+								}
+							}
+						}
 
-						return $response;
+						return new WP_REST_Response( $response );
 					},
 					'permission_callback' => $can_authenticate,
 					'args'                => array(
@@ -163,7 +226,30 @@ class REST_User_Surveys_Controller {
 					),
 				)
 			),
+			'survey-timeouts' => new REST_Route(
+				'core/user/data/survey-timeouts',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'permission_callback' => $can_authenticate,
+					'callback'            => function () {
+						return new WP_REST_Response( $this->timeouts->get_survey_timeouts() );
+					},
+				)
+			),
+			'survey'          => new REST_Route(
+				'core/user/data/survey',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'permission_callback' => $can_authenticate,
+					'callback'            => function () {
+						return new WP_REST_Response(
+							array(
+								'survey' => $this->queue->front(),
+							)
+						);
+					},
+				)
+			),
 		);
 	}
-
 }

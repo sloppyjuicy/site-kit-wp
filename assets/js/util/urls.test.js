@@ -19,7 +19,13 @@
 /**
  * Internal dependencies
  */
-import { getURLPath, getFullURL, normalizeURL } from './urls';
+import {
+	getURLPath,
+	getFullURL,
+	normalizeURL,
+	isHashOnly,
+	shortenURL,
+} from './urls';
 
 describe( 'getURLPath', () => {
 	it.each( [
@@ -40,9 +46,9 @@ describe( 'getURLPath', () => {
 		[ 'an empty string', '' ],
 		[ 'incomplete URL', 'foo.com/test' ],
 	] )(
-		'should throw an error if "%s" is passed instead of a valid URL',
+		'should return NULL if "%s" is passed instead of a valid URL',
 		( _, val ) => {
-			expect( () => getURLPath( val ) ).toThrow( 'Invalid URL' );
+			expect( getURLPath( val ) ).toBeNull();
 		}
 	);
 } );
@@ -79,16 +85,20 @@ describe( 'getFullURL', () => {
 	);
 
 	it.each( [
-		[ 'falsy site URL and falsy path are passed', false, false ],
-		[ 'incomplete URL is passed', '/slug', '/path' ],
+		[ 'falsy site URL and falsy path are passed', false, false, '' ],
+		[ 'incomplete URL is passed', '/slug', '/path', '/slug/path' ],
 		[
 			'site URL is passed as path parameter',
 			'',
 			'https://www.example.com',
+			'https://www.example.com',
 		],
-	] )( 'should throw an error if %s', ( _, siteURL, path ) => {
-		expect( () => getFullURL( siteURL, path ) ).toThrow();
-	} );
+	] )(
+		'should return the concatenated URL if %s',
+		( _, siteURL, path, expected ) => {
+			expect( getFullURL( siteURL, path ) ).toBe( expected );
+		}
+	);
 } );
 
 describe( 'normalizeURL', () => {
@@ -100,4 +110,77 @@ describe( 'normalizeURL', () => {
 	] )( 'should normalize %s to %s', ( url, expected ) => {
 		expect( normalizeURL( url ) ).toBe( expected );
 	} );
+} );
+
+describe( 'isHashOnly', () => {
+	it.each( [
+		[ true, '#hash' ],
+		[ true, '#some-hash' ],
+		[ true, '#some-hash-123' ],
+		[ false, 'https://some.url.com/' ],
+		[ false, 'http://example.com/sample-page#some-hash' ],
+		[ false, 'http://example.com/sample-page#somehash' ],
+		[ false, 'http://example.com/#some-hash' ],
+		[
+			false,
+			'http://example.com/sample-page#some-hash?id=20&product=test',
+		],
+	] )( 'should return %s for %s', ( expected, string ) => {
+		expect( isHashOnly( string ) ).toBe( expected );
+	} );
+} );
+
+describe( 'shortenURL', () => {
+	it.each( [
+		[ undefined, undefined, undefined ],
+		[ null, null, null ],
+		[ '', 0, '' ],
+	] )(
+		'should not modify %s which is an invalid URL and return safely',
+		( url, maxChars, expected ) => {
+			expect( shortenURL( url, maxChars ) ).toBe( expected );
+		}
+	);
+
+	it.each( [
+		[
+			'http://domain.com/a-short-path',
+			30,
+			'http://domain.com/a-short-path',
+		],
+		[ 'http://domain.com/short-path', 30, 'http://domain.com/short-path' ],
+	] )(
+		'should not modify URLs shorter than or equal to maxChars',
+		( url, maxChars, expected ) => {
+			expect( shortenURL( url, maxChars ) ).toBe( expected );
+		}
+	);
+
+	it.each( [
+		[
+			'https://www.very-long-domain-name.com/some-directory/some-file',
+			30,
+			'/some-directory/some-file',
+		],
+		[
+			'https://www.domain.com/some-directory/some-directory/some-file',
+			30,
+			'…tory/some-directory/some-file',
+		],
+		[
+			'https://www.domain.com/some-directory/some-directory/some-file?id=1&category=test',
+			50,
+			'…ctory/some-directory/some-file?id=1&category=test', // 50 chars.
+		],
+		[
+			'https://www.domain.com/some-directory/some-directory/some-file?id=1&category=test#some-hash',
+			50.456,
+			'…-directory/some-file?id=1&category=test#some-hash', // 50 chars.
+		],
+	] )(
+		'should shorten %s to %s chars, shortening it to %s',
+		( url, maxChars, expected ) => {
+			expect( shortenURL( url, maxChars ) ).toBe( expected );
+		}
+	);
 } );

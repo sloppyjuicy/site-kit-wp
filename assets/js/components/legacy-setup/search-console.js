@@ -31,10 +31,13 @@ import { Component, Fragment } from '@wordpress/element';
  * Internal dependencies
  */
 import API from 'googlesitekit-api';
+import {
+	Button,
+	ProgressBar,
+	Select,
+	TextField,
+} from 'googlesitekit-components';
 import { trackEvent } from '../../util';
-import ProgressBar from '../ProgressBar';
-import { Select, TextField, Input } from '../../material-components';
-import Button from '../Button';
 
 class SearchConsole extends Component {
 	constructor( props ) {
@@ -53,15 +56,13 @@ class SearchConsole extends Component {
 		};
 
 		this.handleURLSelect = this.handleURLSelect.bind( this );
-		this.insertPropertyToSearchConsole = this.insertPropertyToSearchConsole.bind(
-			this
-		);
-		this.submitPropertyEventHandler = this.submitPropertyEventHandler.bind(
-			this
-		);
+		this.insertPropertyToSearchConsole =
+			this.insertPropertyToSearchConsole.bind( this );
+		this.submitPropertyEventHandler =
+			this.submitPropertyEventHandler.bind( this );
 	}
 
-	async componentDidMount() {
+	componentDidMount() {
 		const { isAuthenticated, shouldSetup } = this.props;
 
 		if ( ! isAuthenticated || ! shouldSetup ) {
@@ -116,7 +117,7 @@ class SearchConsole extends Component {
 				throw {
 					code: 'multiple_properties_matched',
 					message: sprintf(
-						/* translators: %d: the number of matching properties */
+						/* translators: %s: the number of matching properties */
 						__(
 							'We found %d existing accounts. Please choose which one to use below.',
 							'google-site-kit'
@@ -269,12 +270,9 @@ class SearchConsole extends Component {
 					<TextField
 						label={ __( 'Website Address', 'google-site-kit' ) }
 						name="siteProperty"
-						floatingLabelClassName="mdc-floating-label--float-above"
 						outlined
-						disabled
-					>
-						<Input value={ siteURL } />
-					</TextField>
+						value={ siteURL }
+					/>
 				</div>
 				<div className="googlesitekit-wizard-step__action googlesitekit-wizard-step__action--justify">
 					<Button onClick={ this.submitPropertyEventHandler }>

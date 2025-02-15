@@ -17,62 +17,124 @@
  */
 
 /**
+ * External dependencies
+ */
+import PropTypes from 'prop-types';
+import classnames from 'classnames';
+import { useMutationObserver } from 'react-use-observer';
+
+/**
  * WordPress dependencies
  */
+import { __ } from '@wordpress/i18n';
 import { Fragment } from '@wordpress/element';
 
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { useSelect } from 'googlesitekit-data';
 import Logo from './Logo';
 import UserMenu from './UserMenu';
 import ErrorNotifications from './notifications/ErrorNotifications';
 import { CORE_USER } from '../googlesitekit/datastore/user/constants';
-const { useSelect } = Data;
+import { Grid, Row, Cell } from '../material-components';
+import DashboardNavigation from './DashboardNavigation';
+import EntityHeader from './EntityHeader';
+import ViewOnlyMenu from './ViewOnlyMenu';
+import useViewOnly from '../hooks/useViewOnly';
+import useDashboardType from '../hooks/useDashboardType';
+import Link from './Link';
+import SubtleNotifications from './notifications/SubtleNotifications';
+import { CORE_SITE } from '../googlesitekit/datastore/site/constants';
+import { useGlobalTrackingEffect } from '../hooks/useGlobalTrackingEffect';
 
-const Header = ( { children } ) => {
+function Header( { children, subHeader, showNavigation } ) {
+	const isDashboard = !! useDashboardType();
+	const isViewOnly = useViewOnly();
+	useGlobalTrackingEffect();
+
+	const dashboardURL = useSelect( ( select ) =>
+		select( CORE_SITE ).getAdminURL( 'googlesitekit-dashboard' )
+	);
 	const isAuthenticated = useSelect( ( select ) =>
 		select( CORE_USER ).isAuthenticated()
 	);
+	const [ subHeaderRef, subHeaderMutation ] = useMutationObserver( {
+		childList: true,
+	} );
+	const hasSubheader = !! subHeaderMutation.target?.childElementCount;
 
 	return (
 		<Fragment>
-			<header className="googlesitekit-header">
-				<section className="mdc-layout-grid">
-					<div className="mdc-layout-grid__inner">
-						<div
-							className="
-							googlesitekit-header__logo
-							mdc-layout-grid__cell
-							mdc-layout-grid__cell--align-middle
-							mdc-layout-grid__cell--span-1-phone
-							mdc-layout-grid__cell--span-2-tablet
-							mdc-layout-grid__cell--span-4-desktop
-						"
+			<header
+				className={ classnames( 'googlesitekit-header', {
+					'googlesitekit-header--has-subheader': hasSubheader,
+					'googlesitekit-header--has-navigation': showNavigation,
+				} ) }
+			>
+				<Grid>
+					<Row>
+						<Cell
+							smSize={ 1 }
+							mdSize={ 2 }
+							lgSize={ 4 }
+							className="googlesitekit-header__logo"
+							alignMiddle
 						>
-							<Logo />
-						</div>
-						<div
-							className="
-							mdc-layout-grid__cell
-							mdc-layout-grid__cell--align-middle
-							mdc-layout-grid__cell--align-right-phone
-							mdc-layout-grid__cell--span-3-phone
-							mdc-layout-grid__cell--span-6-tablet
-							mdc-layout-grid__cell--span-8-desktop
-						"
+							<Link
+								aria-label={ __(
+									'Go to dashboard',
+									'google-site-kit'
+								) }
+								className="googlesitekit-header__logo-link"
+								href={ dashboardURL }
+							>
+								<Logo />
+							</Link>
+						</Cell>
+						<Cell
+							smSize={ 3 }
+							mdSize={ 6 }
+							lgSize={ 8 }
+							className="googlesitekit-header__children"
+							alignMiddle
 						>
 							{ children }
-							{ isAuthenticated && <UserMenu /> }
-						</div>
-					</div>
-				</section>
+
+							{ ! isAuthenticated &&
+								isDashboard &&
+								isViewOnly && <ViewOnlyMenu /> }
+							{ isAuthenticated && ! isViewOnly && <UserMenu /> }
+						</Cell>
+					</Row>
+				</Grid>
 			</header>
 
-			<ErrorNotifications />
+			<div className="googlesitekit-subheader" ref={ subHeaderRef }>
+				<ErrorNotifications />
+				{ subHeader }
+			</div>
+
+			{ showNavigation && <DashboardNavigation /> }
+
+			{ isDashboard && <SubtleNotifications /> }
+
+			<EntityHeader />
 		</Fragment>
 	);
+}
+
+Header.displayName = 'Header';
+
+Header.propTypes = {
+	children: PropTypes.node,
+	subHeader: PropTypes.element,
+	showNavigation: PropTypes.bool,
+};
+
+Header.defaultProps = {
+	children: null,
+	subHeader: null,
 };
 
 export default Header;

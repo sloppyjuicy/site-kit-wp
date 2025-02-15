@@ -23,7 +23,6 @@
 #wpadminbar {
 
 	.googlesitekit-adminbar {
-
 		// General
 		* {
 			font-family: $f-primary;
@@ -179,38 +178,9 @@
 			@extend .googlesitekit-data-block__value;
 		}
 
-		// CTA Link
-		.googlesitekit-cta-link {
-
-			@extend .googlesitekit-cta-link;
-			height: auto;
-		}
-
 		.googlesitekit-adminbar__link {
 
 			@extend .googlesitekit-adminbar__link;
-		}
-
-		// CTA's
-		.googlesitekit-cta {
-
-			@extend .googlesitekit-cta;
-			box-sizing: border-box;
-		}
-
-		.googlesitekit-cta--error {
-
-			@extend .googlesitekit-cta--error;
-		}
-
-		.googlesitekit-cta__title {
-
-			@extend .googlesitekit-cta__title;
-		}
-
-		.googlesitekit-cta__description {
-
-			@extend .googlesitekit-cta__description;
 		}
 	}
 
@@ -231,15 +201,72 @@
 			@extend .mdc-layout-grid__cell;
 			@extend .mdc-layout-grid__cell--span-12-tablet;
 		}
-
 	}
 
 	// Higher-specificity overrides.
 	.googlesitekit-plugin .googlesitekit-adminbar {
 
+		.mdc-button {
+
+			@extend .mdc-button;
+		}
+
+		.mdc-button--raised {
+
+			@extend .mdc-button--raised;
+		}
+
+		// CTAs
+		.googlesitekit-cta {
+
+			@extend .googlesitekit-cta;
+			box-sizing: border-box;
+		}
+
+		.googlesitekit-cta--error {
+
+			@extend .googlesitekit-cta--error;
+		}
+
+		.googlesitekit-cta__title {
+
+			@extend .googlesitekit-cta__title;
+		}
+
+		.googlesitekit-cta__description {
+
+			@extend .googlesitekit-cta__description;
+		}
+
 		.googlesitekit-cta-link {
 
-			font-size: 16px;
+			@extend .googlesitekit-cta-link;
+
+			background-color: transparent;
+			font-size: $fs-body-lg;
+			height: auto;
+			letter-spacing: $ls-m;
+			width: max-content;
+		}
+
+		.googlesitekit-error-cta-wrapper .mdc-button {
+
+			margin-bottom: 24px;
+		}
+
+		// New Analytics CTA Link
+		.googlesitekit-analytics-cta {
+
+			@extend .googlesitekit-analytics-cta;
+
+			strong {
+				font-weight: 600;
+			}
+
+			.mdc-button__label {
+				font-weight: $fw-normal;
+				letter-spacing: 1.25px;
+			}
 		}
 	}
 }

@@ -21,19 +21,109 @@
  */
 import { __ } from '@wordpress/i18n';
 
-export const USER_INPUT_QUESTION_ROLE = 'role';
+/**
+ * Internal dependencies
+ */
+import { ENUM_CONVERSION_EVENTS } from '../../../modules/analytics-4/datastore/constants';
+
+export const USER_INPUT_QUESTIONS_PURPOSE = 'purpose';
 export const USER_INPUT_QUESTION_POST_FREQUENCY = 'postFrequency';
-export const USER_INPUT_QUESTION_GOALS = 'goals';
-export const USER_INPUT_QUESTION_HELP_NEEDED = 'helpNeeded';
-export const USER_INPUT_QUESTION_SEARCH_TERMS = 'searchTerms';
+export const USER_INPUT_QUESTIONS_GOALS = 'goals';
 
 export const USER_INPUT_QUESTIONS_LIST = [
-	USER_INPUT_QUESTION_ROLE,
+	USER_INPUT_QUESTIONS_PURPOSE,
 	USER_INPUT_QUESTION_POST_FREQUENCY,
-	USER_INPUT_QUESTION_GOALS,
-	USER_INPUT_QUESTION_HELP_NEEDED,
-	USER_INPUT_QUESTION_SEARCH_TERMS,
+	USER_INPUT_QUESTIONS_GOALS,
 ];
+
+export const USER_INPUT_MAX_ANSWERS = {
+	[ USER_INPUT_QUESTIONS_PURPOSE ]: 1,
+	[ USER_INPUT_QUESTION_POST_FREQUENCY ]: 1,
+	[ USER_INPUT_QUESTIONS_GOALS ]: 3,
+};
+
+export const USER_INPUT_CURRENTLY_EDITING_KEY =
+	'googlesitekit-user-input-currently-editing';
+
+export const FORM_USER_INPUT_QUESTION_NUMBER = 'user_input_question_number';
+export const FORM_USER_INPUT_QUESTION_SNAPSHOT = 'user_input_question_snapshot';
+export const USER_INPUT_LEGACY_SITE_PURPOSE_DISMISSED_ITEM_KEY =
+	'user-input-legacy-site-purpose-dismissed-item';
+
+export const USER_INPUT_PURPOSE_TO_CONVERSION_EVENTS_MAPPING = {
+	publish_blog: [
+		ENUM_CONVERSION_EVENTS.CONTACT,
+		ENUM_CONVERSION_EVENTS.GENERATE_LEAD,
+		ENUM_CONVERSION_EVENTS.SUBMIT_LEAD_FORM,
+	],
+	publish_news: [
+		ENUM_CONVERSION_EVENTS.CONTACT,
+		ENUM_CONVERSION_EVENTS.GENERATE_LEAD,
+		ENUM_CONVERSION_EVENTS.SUBMIT_LEAD_FORM,
+	],
+	monetize_content: [],
+	sell_products_or_service: [
+		ENUM_CONVERSION_EVENTS.PURCHASE,
+		ENUM_CONVERSION_EVENTS.ADD_TO_CART,
+	],
+	sell_products: [
+		ENUM_CONVERSION_EVENTS.PURCHASE,
+		ENUM_CONVERSION_EVENTS.ADD_TO_CART,
+	],
+	provide_services: [
+		ENUM_CONVERSION_EVENTS.CONTACT,
+		ENUM_CONVERSION_EVENTS.GENERATE_LEAD,
+		ENUM_CONVERSION_EVENTS.SUBMIT_LEAD_FORM,
+	],
+	share_portfolio: [
+		ENUM_CONVERSION_EVENTS.CONTACT,
+		ENUM_CONVERSION_EVENTS.GENERATE_LEAD,
+		ENUM_CONVERSION_EVENTS.SUBMIT_LEAD_FORM,
+	],
+};
+
+/**
+ * Gets available questions for user input settings.
+ *
+ * @since 1.139.0
+ * @private
+ *
+ * @return {Object} Questions object.
+ */
+export function getUserInputQuestions() {
+	return [
+		{
+			title: __(
+				'What is the main purpose of this site?',
+				'google-site-kit'
+			),
+			description: __(
+				'Based on your answer, Site Kit will tailor the metrics you see on your dashboard to help you track progress towards your specific goals',
+				'google-site-kit'
+			),
+		},
+		{
+			title: __(
+				'How often do you create new content for this site?',
+				'google-site-kit'
+			),
+			description: __(
+				'Based on your answer, Site Kit will suggest new features for your dashboard related to content creation',
+				'google-site-kit'
+			),
+		},
+		{
+			title: __(
+				'What are your top goals for this site?',
+				'google-site-kit'
+			),
+			description: __(
+				'Based on your answers, Site Kit will tailor the metrics and recommendations you see on your dashboard to help you make progress in these areas',
+				'google-site-kit'
+			),
+		},
+	];
+}
 
 /**
  * Gets available answers for user input settings.
@@ -43,69 +133,54 @@ export const USER_INPUT_QUESTIONS_LIST = [
  *
  * @return {Object} Answers object.
  */
-export function getUserInputAnwsers() {
+export function getUserInputAnswers() {
 	return {
-		USER_INPUT_ANSWERS_ROLE: {
-			owner: __(
-				'I am the owner and sole creator and admin',
-				'google-site-kit'
-			),
-			owner_with_team: __(
-				'I am the owner of the site and have a team who works on this site',
-				'google-site-kit'
-			),
-			in_house_team: __(
-				'I am part of the in-house team in a content creation, growth, SEO or technical role',
-				'google-site-kit'
-			),
-			part_type_freelancer: __(
-				'I am a part-time or freelance consultant who is helping with this site',
-				'google-site-kit'
-			),
-		},
-		USER_INPUT_ANSWERS_POST_FREQUENCY: {
-			never: __( 'Never', 'google-site-kit' ),
-			daily: __( 'Daily / multiple times a day', 'google-site-kit' ),
-			weekly: __( 'Weekly / multiple times a week', 'google-site-kit' ),
-			monthly: __( 'Monthly or less', 'google-site-kit' ),
-		},
-		USER_INPUT_ANSWERS_GOALS: {
+		USER_INPUT_ANSWERS_PURPOSE: {
 			sell_products_or_service: __(
 				'Sell products or services',
 				'google-site-kit'
 			),
+			sell_products: __( 'Sell products', 'google-site-kit' ),
+			provide_services: __( 'Provide services', 'google-site-kit' ),
 			monetize_content: __(
 				'Monetize content (with ads or affiliate links)',
 				'google-site-kit'
 			),
 			publish_blog: __( 'Publish a blog', 'google-site-kit' ),
-			generate_leads: __( 'Generate leads', 'google-site-kit' ),
 			publish_news: __( 'Publish news content', 'google-site-kit' ),
 			share_portfolio: __(
 				'Share a business card or portfolio to represent me or my company online',
 				'google-site-kit'
 			),
+			other: __( 'Other', 'google-site-kit' ),
 		},
-		USER_INPUT_ANSWERS_HELP_NEEDED: {
+		USER_INPUT_ANSWERS_POST_FREQUENCY: {
+			never: __( 'Never', 'google-site-kit' ),
+			daily: __( 'Daily', 'google-site-kit' ),
+			weekly: __( 'Weekly', 'google-site-kit' ),
+			monthly: __( 'Monthly', 'google-site-kit' ),
+			other: __( 'Other', 'google-site-kit' ),
+		},
+		USER_INPUT_ANSWERS_GOALS: {
 			retaining_visitors: __(
-				'Retaining visitors, turning them into loyal readers or customers',
+				'Retain visitors, turn them into loyal readers or customers',
 				'google-site-kit'
 			),
 			improving_performance: __(
-				'Improving speed and performance',
+				'Improve speed and performance',
 				'google-site-kit'
 			),
 			finding_new_topics: __(
-				'Finding new topics to write about that connect with my audience',
+				'Find new topics to write about that connect with my audience',
 				'google-site-kit'
 			),
-			growing_audience: __( 'Growing my audience', 'google-site-kit' ),
+			growing_audience: __( 'Grow my audience', 'google-site-kit' ),
 			expanding_business: __(
-				'Expanding my business into new cities, states or markets',
+				'Expand my business into new cities, states or markets',
 				'google-site-kit'
 			),
 			generating_revenue: __(
-				'Generating more revenue',
+				'Generate more revenue',
 				'google-site-kit'
 			),
 			help_better_rank: __(
@@ -113,13 +188,58 @@ export function getUserInputAnwsers() {
 				'google-site-kit'
 			),
 			understanding_content_performance: __(
-				'Understanding which content is performing best',
+				'Understand which content is performing best',
 				'google-site-kit'
 			),
 			encourage_to_post: __(
-				'Encouragement to post more frequently',
+				'Tips for generating and posting engaging content updates',
 				'google-site-kit'
 			),
+			other: __( 'Other', 'google-site-kit' ),
+		},
+	};
+}
+
+/**
+ * Gets available answer descriptions for user input settings.
+ *
+ * @since 1.139.0
+ * @private
+ *
+ * @return {Object} Answer descriptions object.
+ */
+export function getUserInputAnswersDescription() {
+	return {
+		USER_INPUT_ANSWERS_PURPOSE: {
+			sell_products_or_service: __(
+				'E.g. selling products like devices, apparel, equipment, etc. or offering services like courses, consulting, tutoring, etc.',
+				'google-site-kit'
+			),
+			sell_products: __(
+				'E.g. selling devices, apparel, equipment, etc.',
+				'google-site-kit'
+			),
+			provide_services: __(
+				'E.g. offering courses, consulting, tutoring, etc.',
+				'google-site-kit'
+			),
+			monetize_content: __(
+				'Using display ads, affiliate links, sponsored content, etc.',
+				'google-site-kit'
+			),
+			publish_blog: __(
+				'Writing on a topic you’re passionate about, no focus on monetizing content',
+				'google-site-kit'
+			),
+			publish_news: __(
+				'E.g. local news, investigative pieces, interviews, etc.',
+				'google-site-kit'
+			),
+			share_portfolio: __(
+				'My website represents me or my company',
+				'google-site-kit'
+			),
+			other: undefined,
 		},
 	};
 }

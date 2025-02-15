@@ -29,15 +29,14 @@ import { addQueryArgs } from '@wordpress/url';
 /**
  * Internal dependencies
  */
-import Data from 'googlesitekit-data';
+import { commonActions, createRegistrySelector } from 'googlesitekit-data';
 import { CORE_USER } from './constants';
-
-const { createRegistrySelector } = Data;
+import { escapeURI } from '../../../util/escape-uri';
 
 const RECEIVE_CONNECT_URL = 'RECEIVE_CONNECT_URL';
 const RECEIVE_USER_INFO = 'RECEIVE_USER_INFO';
 const RECEIVE_USER_IS_VERIFIED = 'RECEIVE_USER_IS_VERIFIED';
-const RECEIVE_USER_INPUT_STATE = 'RECEIVE_USER_INPUT_STATE';
+const RECEIVE_IS_USER_INPUT_COMPLETED = 'RECEIVE_IS_USER_INPUT_COMPLETED';
 const RECEIVE_USER_INITIAL_SITE_KIT_VERSION =
 	'RECEIVE_USER_INITIAL_SITE_KIT_VERSION';
 
@@ -46,6 +45,7 @@ const initialState = {
 	initialVersion: undefined,
 	user: undefined,
 	verified: undefined,
+	isUserInputCompleted: undefined,
 };
 
 export const actions = {
@@ -131,17 +131,20 @@ export const actions = {
 	/**
 	 * Stores the user input state in the datastore.
 	 *
-	 * @since 1.20.0
+	 * @since 1.94.0
 	 * @private
 	 *
-	 * @param {Object} userInputState User input state.
+	 * @param {Object} isUserInputCompleted User input state.
 	 * @return {Object} Redux-style action.
 	 */
-	receiveUserInputState( userInputState ) {
-		invariant( userInputState, 'userInputState is required.' );
+	receiveIsUserInputCompleted( isUserInputCompleted ) {
+		invariant(
+			isUserInputCompleted !== undefined,
+			'The isUserInputCompleted param is required.'
+		);
 		return {
-			payload: { userInputState },
-			type: RECEIVE_USER_INPUT_STATE,
+			payload: { isUserInputCompleted },
+			type: RECEIVE_IS_USER_INPUT_COMPLETED,
 		};
 	},
 };
@@ -178,11 +181,11 @@ export const reducer = ( state, { type, payload } ) => {
 				verified,
 			};
 		}
-		case RECEIVE_USER_INPUT_STATE: {
-			const { userInputState } = payload;
+		case RECEIVE_IS_USER_INPUT_COMPLETED: {
+			const { isUserInputCompleted } = payload;
 			return {
 				...state,
-				userInputState,
+				isUserInputCompleted,
 			};
 		}
 		default: {
@@ -193,7 +196,7 @@ export const reducer = ( state, { type, payload } ) => {
 
 export const resolvers = {
 	*getConnectURL() {
-		const { select } = yield Data.commonActions.getRegistry();
+		const { select } = yield commonActions.getRegistry();
 
 		if ( select( CORE_USER ).getConnectURL() ) {
 			return;
@@ -209,7 +212,7 @@ export const resolvers = {
 	},
 
 	*getUser() {
-		const { select } = yield Data.commonActions.getRegistry();
+		const { select } = yield commonActions.getRegistry();
 
 		if ( select( CORE_USER ).getUser() !== undefined ) {
 			return;
@@ -224,7 +227,7 @@ export const resolvers = {
 	},
 
 	*getInitialSiteKitVersion() {
-		const { select } = yield Data.commonActions.getRegistry();
+		const { select } = yield commonActions.getRegistry();
 
 		if ( select( CORE_USER ).getInitialSiteKitVersion() !== undefined ) {
 			return;
@@ -242,7 +245,7 @@ export const resolvers = {
 	},
 
 	*isVerified() {
-		const { select } = yield Data.commonActions.getRegistry();
+		const { select } = yield commonActions.getRegistry();
 
 		if ( select( CORE_USER ).isVerified() !== undefined ) {
 			return;
@@ -256,10 +259,10 @@ export const resolvers = {
 		yield actions.receiveUserIsVerified( verified );
 	},
 
-	*getUserInputState() {
-		const { select } = yield Data.commonActions.getRegistry();
+	*isUserInputCompleted() {
+		const { select } = yield commonActions.getRegistry();
 
-		if ( select( CORE_USER ).getUserInputState() ) {
+		if ( undefined !== select( CORE_USER ).isUserInputCompleted() ) {
 			return;
 		}
 
@@ -267,8 +270,8 @@ export const resolvers = {
 			global.console.error( 'Could not load core/user info.' );
 			return;
 		}
-		const { userInputState } = global._googlesitekitUserData;
-		yield actions.receiveUserInputState( userInputState );
+		const { isUserInputCompleted } = global._googlesitekitUserData;
+		yield actions.receiveIsUserInputCompleted( isUserInputCompleted );
 	},
 };
 
@@ -306,14 +309,22 @@ export const selectors = {
 	 * @param {Object}   [args]                  Optional arguments for the resulting URL.
 	 * @param {string[]} [args.additionalScopes] Additional scopes to request.
 	 * @param {string}   [args.redirectURL]      URL to redirect to after successful authentication.
+	 * @param {string}   [args.errorRedirectURL] URL to redirect to if an error is returned during authentication.
 	 * @return {(string|undefined)} Full URL to connect, or `undefined` if not loaded yet.
 	 */
 	getConnectURL(
 		state,
-		{ additionalScopes = [], redirectURL = undefined } = {}
+		{
+			additionalScopes = [],
+			redirectURL = undefined,
+			errorRedirectURL = undefined,
+		} = {}
 	) {
 		const { connectURL } = state;
-		const queryArgs = { redirect: redirectURL };
+		const queryArgs = {
+			redirect: redirectURL,
+			errorRedirect: errorRedirectURL,
+		};
 
 		if ( connectURL === undefined ) {
 			return undefined;
@@ -398,6 +409,49 @@ export const selectors = {
 	} ),
 
 	/**
+	 * Gets the full name name for this user.
+	 *
+	 * Returns full name of the user or `undefined` if the user info is not available/loaded.
+	 *
+	 * @since 1.86.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(string|null|undefined)} The user's full name; will be set to `null` if not available in the user's profile data and `undefined` while loading.
+	 */
+	getFullName: createRegistrySelector( ( select ) => () => {
+		const user = select( CORE_USER ).getUser();
+
+		if ( user === undefined ) {
+			return undefined;
+		}
+
+		return user.full_name;
+	} ),
+
+	/**
+	 * Gets an account chooser url with the current user's email.
+	 *
+	 * @since 1.80.0
+	 *
+	 * @param {Object} state Data store's state.
+	 * @return {(string|undefined)} The concatenated url if an email is present; otherwise undefined.
+	 */
+	getAccountChooserURL: createRegistrySelector(
+		( select ) => ( state, destinationURL ) => {
+			invariant( destinationURL, 'destinationURL is required' );
+
+			const userEmail = select( CORE_USER ).getEmail();
+			if ( userEmail === undefined ) {
+				return undefined;
+			}
+
+			// The `Email` parameter is case sensitive;
+			// the capital E is required for the account chooser URL.
+			return escapeURI`https://accounts.google.com/accountchooser?continue=${ destinationURL }&Email=${ userEmail }`;
+		}
+	),
+
+	/**
 	 * Gets the initial version that the user used Site Kit with.
 	 *
 	 * @since 1.27.0
@@ -428,14 +482,14 @@ export const selectors = {
 	/**
 	 * Gets the user input state.
 	 *
-	 * @since 1.20.0
+	 * @since 1.94.0
 	 *
 	 * @param {Object} state Data store's state.
 	 * @return {string} The user input state.
 	 */
-	getUserInputState( state ) {
-		const { userInputState } = state;
-		return userInputState;
+	isUserInputCompleted( state ) {
+		const { isUserInputCompleted } = state;
+		return isUserInputCompleted;
 	},
 };
 

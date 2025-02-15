@@ -29,8 +29,8 @@ class Disconnected_ReasonTest extends SettingsTestCase {
 	 */
 	private $options;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 		$this->options = new User_Options( new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE ) );
 	}
 
@@ -51,5 +51,4 @@ class Disconnected_ReasonTest extends SettingsTestCase {
 	protected function get_option_name() {
 		return Disconnected_Reason::OPTION;
 	}
-
 }

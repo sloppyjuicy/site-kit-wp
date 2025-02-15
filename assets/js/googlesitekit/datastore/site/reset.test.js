@@ -22,7 +22,6 @@
 import {
 	createTestRegistry,
 	subscribeUntil,
-	unsubscribeFromAll,
 } from '../../../../../tests/js/utils';
 import { CORE_SITE } from './constants';
 
@@ -33,16 +32,12 @@ describe( 'core/site reset', () => {
 		registry = createTestRegistry();
 	} );
 
-	afterEach( () => {
-		unsubscribeFromAll( registry );
-	} );
-
 	describe( 'actions', () => {
 		describe( 'fetchReset', () => {
-			it( 'sets isDoingReset ', async () => {
+			it( 'sets isDoingReset ', () => {
 				const response = true;
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/reset/,
+					new RegExp( '^/google-site-kit/v1/core/site/data/reset' ),
 					{ body: JSON.stringify( response ), status: 200 }
 				);
 
@@ -58,7 +53,9 @@ describe( 'core/site reset', () => {
 				expect( async () => {
 					const response = true;
 					fetchMock.postOnce(
-						/^\/google-site-kit\/v1\/core\/site\/data\/reset/,
+						new RegExp(
+							'^/google-site-kit/v1/core/site/data/reset'
+						),
 						{ body: JSON.stringify( response ), status: 200 }
 					);
 
@@ -69,7 +66,7 @@ describe( 'core/site reset', () => {
 			it( 'resets connection on server only', async () => {
 				const response = true;
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/reset/,
+					new RegExp( '^/google-site-kit/v1/core/site/data/reset' ),
 					{ body: JSON.stringify( response ), status: 200 }
 				);
 
@@ -84,7 +81,9 @@ describe( 'core/site reset', () => {
 				expect( fetchMock ).toHaveFetchedTimes( 1 );
 
 				fetchMock.getOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/connection/,
+					new RegExp(
+						'^/google-site-kit/v1/core/site/data/connection'
+					),
 					{
 						body: { connected: false, resettable: false },
 						status: 200,
@@ -117,7 +116,7 @@ describe( 'core/site reset', () => {
 					data: { status: 500 },
 				};
 				fetchMock.postOnce(
-					/^\/google-site-kit\/v1\/core\/site\/data\/reset/,
+					new RegExp( '^/google-site-kit/v1/core/site/data/reset' ),
 					{ body: JSON.stringify( response ), status: 500 }
 				);
 

@@ -27,8 +27,8 @@ class Dismissed_ItemsTest extends TestCase {
 	 */
 	private $dismissed_items;
 
-	public function setUp() {
-		parent::setUp();
+	public function set_up() {
+		parent::set_up();
 
 		$user_id = $this->factory()->user->create();
 		$context = new Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
@@ -50,10 +50,50 @@ class Dismissed_ItemsTest extends TestCase {
 		);
 
 		$this->dismissed_items->add( 'bar', 100 );
-		$this->assertEquals(
+		$user_options = $this->user_options->get( Dismissed_Items::OPTION );
+		$this->assertArrayHasKey( 'foo', $user_options );
+		$this->assertEquals( 0, $user_options['foo'] );
+		$this->assertArrayHasKey( 'bar', $user_options );
+		$this->assertEqualsWithDelta( time() + 100, $user_options['bar'], 2 );
+	}
+
+	public function test_remove() {
+		$this->user_options->set(
+			Dismissed_Items::OPTION,
 			array(
 				'foo' => 0,
 				'bar' => time() + 100,
+				'baz' => time() + 200,
+			)
+		);
+
+		$user_options = $this->user_options->get( Dismissed_Items::OPTION );
+		$this->assertArrayHasKey( 'foo', $user_options );
+		$this->assertArrayHasKey( 'bar', $user_options );
+		$this->assertArrayHasKey( 'baz', $user_options );
+		$this->assertEquals( 0, $user_options['foo'] );
+		$this->assertEqualsWithDelta( time() + 100, $user_options['bar'], 2 );
+		$this->assertEqualsWithDelta( time() + 200, $user_options['baz'], 2 );
+
+		$this->dismissed_items->remove( 'bar' );
+
+		$this->assertEquals(
+			array(
+				'foo' => 0,
+				'baz' => time() + 200,
+
+			),
+			$this->user_options->get( Dismissed_Items::OPTION )
+		);
+
+		// If the item is not in dismissed items, there should be no change.
+		$this->dismissed_items->remove( 'bar' );
+
+		$this->assertEquals(
+			array(
+				'foo' => 0,
+				'baz' => time() + 200,
+
 			),
 			$this->user_options->get( Dismissed_Items::OPTION )
 		);
@@ -92,5 +132,4 @@ class Dismissed_ItemsTest extends TestCase {
 		$this->assertTrue( $this->dismissed_items->is_dismissed( 'bar' ) );
 		$this->assertFalse( $this->dismissed_items->is_dismissed( 'baz' ) );
 	}
-
 }
